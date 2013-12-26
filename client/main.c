@@ -6,7 +6,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "../util/util.h"
+#include "util.h"
 
 int main(int argc, char **argv)
 {

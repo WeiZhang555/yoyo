@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 #include <sys/epoll.h>
 
-#include "../util/util.h"
+#include "util.h"
 
 #define MAX_EVENTS 10
 
