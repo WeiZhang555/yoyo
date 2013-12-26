@@ -1,4 +1,5 @@
-yoyo
+bomb
 ====
 
-my graduation thesis. A software that can delete files which is sent from me and stored in other's devices.
+software for graduation. It can remove the remote files you sent to others,
+
