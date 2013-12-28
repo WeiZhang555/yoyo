@@ -15,30 +15,30 @@
 
 #define MAX_EVENTS 10
 
-
-void HandleClientMsg(SSL* ssl)
+void HandleClientMsg(int connfd)
 {
 	char buffer[1024];
 	int recvLen;
-	int connfd;
-	connfd = SSL_get_fd(ssl);
 	bzero(buffer, 1024);
-	recvLen = SSL_read(ssl, buffer, 1024);
+	recvLen = recv(connfd, buffer, 1024, 0);
 	if(recvLen <= 0 || strncmp(buffer, "quit", 4)==0)
 	{
 		printf("client quit!\n");
-		SSL_shutdown(ssl);
-		SSL_free(ssl);
 		close(connfd);
 		return;
 	}
 	printf("Receive from client %d: %s\n", connfd, buffer);
 	fflush(NULL);
-	SSL_write(ssl, "Hello client!\n", 14);
+	send(connfd, "Hello client!\n", 14, 0);
 }
 
+BIO *in = NULL;
 void Close_up()
 {
+	if(in)
+	{
+		//BIO_free(in);
+	}
 	printf("Server quit, bye bye!\n");
 	return;
 }
@@ -52,37 +52,31 @@ int main(int argc, char **argv)
 	struct sockaddr_in cliaddr, servaddr;
 	char buffer[1024];
 	struct epoll_event ev, events[MAX_EVENTS];
+	BIO *ssl_bio, *tmp;
 	SSL_CTX *ctx;
+	SSL *ssl;
 
 	/*Initialize the ssl encryption part*/
 	signal(SIGINT, Close_up);
-	SSL_library_init();
-	/*load all the ssl error message*/
 	SSL_load_error_strings();
-	/*load all the ssl algorithms*/
 	OpenSSL_add_ssl_algorithms();
-	/*Create an new ssl ctx*/
 	ctx = SSL_CTX_new(SSLv23_server_method());	
-	/*load the user's certificate*/
 	if(!SSL_CTX_use_certificate_file(ctx, CERT_FILE, SSL_FILETYPE_PEM))
 	{
 		perror("use certificate file error!");
 		return;
 	}
-	/*load user's private key*/
 	if(!SSL_CTX_use_PrivateKey_file(ctx, CERT_FILE, SSL_FILETYPE_PEM))
 	{
 		perror("use private key file error!");
 		return;
 	}
-	/*check whether the private key is correct or not*/
 	if(!SSL_CTX_check_private_key(ctx))
 	{
 		perror("private key check error!");
 		return;
 	}
-
-	/*open a server listening socket*/
+	
 	listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	if(listenfd<0)
 	{
@@ -94,7 +88,6 @@ int main(int argc, char **argv)
 	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servaddr.sin_port = htons(SERVER_PORT);
 
-	/*set the socket address to be reuseable*/
 	int optVal = 1;
 	setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optVal, sizeof(optVal));
 	
@@ -139,27 +132,16 @@ int main(int argc, char **argv)
 					exit(EXIT_FAILURE);
 				}
 				printf("accept successfully!\n");
-				/*add the connfd into the SSL*/
-				SSL *ssl = SSL_new(ctx);
-				SSL_set_fd(ssl, connfd);
-				if(-1==SSL_accept(ssl))
-				{
-					perror("SSL accept error.");
-					close(connfd);
-					continue;
-				}
 				ev.events = EPOLLIN;
-				ev.data.ptr = ssl;
+				ev.data.fd = connfd;
 				if (epoll_ctl(epollfd, EPOLL_CTL_ADD, connfd, &ev) == -1) {
 					perror("epoll_ctl()");
 					exit(EXIT_FAILURE);
 				}
 			}else{
-				HandleClientMsg(events[n].data.ptr);
+				HandleClientMsg(events[n].data.fd);
 			}
 		} /*end for loop*/
 	} /*end while*/
 	close(listenfd);
-	SSL_CTX_free(ctx);
-	return 0;
 }
