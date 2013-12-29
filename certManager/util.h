@@ -1,1 +1,1 @@
-#define SERVER_PORT 8888
+#define SERVER_PORT 8889

@@ -11,13 +11,16 @@
 #include <signal.h>
 
 #include "util.h"
-#define CERT_FILE "CMCert.pem"
 
-#define MAX_EVENTS 10
-
+extern SSL *SSL_Init(SSL_CTX *ctx, int sockfd);
+extern void SSL_DeInit(SSL *ssl);
+extern SSL_CTX *SSL_CTX_Init();
+extern int SSL_CTX_DeInit(SSL_CTX *ctx);
 
 void HandleClientMsg(SSL* ssl)
 {
+	if(!ssl)
+		return;
 	char buffer[1024];
 	int recvLen;
 	int connfd;
@@ -27,8 +30,7 @@ void HandleClientMsg(SSL* ssl)
 	if(recvLen <= 0 || strncmp(buffer, "quit", 4)==0)
 	{
 		printf("client quit!\n");
-		SSL_shutdown(ssl);
-		SSL_free(ssl);
+		SSL_DeInit(ssl);		
 		close(connfd);
 		return;
 	}
@@ -37,13 +39,19 @@ void HandleClientMsg(SSL* ssl)
 	SSL_write(ssl, "Hello client!\n", 14);
 }
 
-void Close_up()
+
+static void Sigint_Handler()
 {
 	printf("Server quit, bye bye!\n");
 	return;
 }
 
-int main(int argc, char **argv)
+
+/**
+ *Start the network service, this is the main part of server.
+ *return value: -1 if error occurs, 0 if everything is ok.
+ */
+int NetworkServiceStart()
 {
 	int listenfd, connfd;
 	int recvLen, sendLen;
@@ -54,40 +62,20 @@ int main(int argc, char **argv)
 	struct epoll_event ev, events[MAX_EVENTS];
 	SSL_CTX *ctx;
 
-	/*Initialize the ssl encryption part*/
-	signal(SIGINT, Close_up);
-	SSL_library_init();
-	/*load all the ssl error message*/
-	SSL_load_error_strings();
-	/*load all the ssl algorithms*/
-	OpenSSL_add_ssl_algorithms();
-	/*Create an new ssl ctx*/
-	ctx = SSL_CTX_new(SSLv23_server_method());	
-	/*load the user's certificate*/
-	if(!SSL_CTX_use_certificate_file(ctx, CERT_FILE, SSL_FILETYPE_PEM))
-	{
-		perror("use certificate file error!");
-		return;
-	}
-	/*load user's private key*/
-	if(!SSL_CTX_use_PrivateKey_file(ctx, CERT_FILE, SSL_FILETYPE_PEM))
-	{
-		perror("use private key file error!");
-		return;
-	}
-	/*check whether the private key is correct or not*/
-	if(!SSL_CTX_check_private_key(ctx))
-	{
-		perror("private key check error!");
-		return;
-	}
+	/*Handle the INTERRUPT signal*/
+	signal(SIGINT, Sigint_Handler);
+
+	/*Initialize the SSL context*/
+	ctx = SSL_CTX_Init();
+	if(!ctx)
+		return -1;
 
 	/*open a server listening socket*/
 	listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	if(listenfd<0)
 	{
 		perror("socket() failed!");
-		exit(-1);
+		return -1;
 	}
 
 	servaddr.sin_family = AF_INET;
@@ -101,33 +89,33 @@ int main(int argc, char **argv)
 	if(bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0)
 	{
 		perror("bind() failed!");
-		exit(-1);
+		return -1;
 	}
 
 	if(listen(listenfd, 10) < 0)
 	{
 		perror("listen() error!");
-		exit(-1);
+		return -1;
 	}
 
 	epollfd = epoll_create(MAX_EVENTS);
 	if (epollfd == -1) {
 		perror("epoll_create()");
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	ev.events = EPOLLIN;
 	ev.data.fd = listenfd;
 	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, listenfd, &ev) == -1) {
 		perror("epoll_ctl()");
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 	
 	while(1){
 		nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
 		if (nfds == -1) {
 			perror("epoll_wait()");
-			exit(EXIT_FAILURE);
+			return -1;
 		}
 
 		for(n = 0; n < nfds; ++n) {
@@ -136,15 +124,13 @@ int main(int argc, char **argv)
 				if(connfd < 0)
 				{
 					perror("accept()");
-					exit(EXIT_FAILURE);
+					return -1;
 				}
 				printf("accept successfully!\n");
-				/*add the connfd into the SSL*/
-				SSL *ssl = SSL_new(ctx);
-				SSL_set_fd(ssl, connfd);
-				if(-1==SSL_accept(ssl))
+				/*Initialize SSL connection*/
+				SSL *ssl = SSL_Init(ctx, connfd);
+				if(!ssl)
 				{
-					perror("SSL accept error.");
 					close(connfd);
 					continue;
 				}
@@ -152,7 +138,7 @@ int main(int argc, char **argv)
 				ev.data.ptr = ssl;
 				if (epoll_ctl(epollfd, EPOLL_CTL_ADD, connfd, &ev) == -1) {
 					perror("epoll_ctl()");
-					exit(EXIT_FAILURE);
+					return -1;
 				}
 			}else{
 				HandleClientMsg(events[n].data.ptr);
@@ -160,6 +146,6 @@ int main(int argc, char **argv)
 		} /*end for loop*/
 	} /*end while*/
 	close(listenfd);
-	SSL_CTX_free(ctx);
+	SSL_CTX_DeInit(ctx);
 	return 0;
 }
