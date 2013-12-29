@@ -1,3 +1,5 @@
-main: main.o
-	gcc -g -o main main.o -lssl -lcrypto
-main.o:	main.c util.h
+main: main.o Net_Service.o SSL_Wrapper.o 
+	gcc -g -o main main.o Net_Service.o SSL_Wrapper.o -lssl -lcrypto
+	rm -fv *.o
+clean:
+	rm -fv *.o main

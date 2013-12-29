@@ -3,5 +3,4 @@ main:	main.o Net_Service.o SSL_Wrapper.o
 	rm -rfv *.o
 
 clean:
-	rm -fv *.o
-	rm main
+	rm -fv *.o main
