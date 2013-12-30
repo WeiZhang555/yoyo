@@ -137,7 +137,8 @@ SSL_CTX *SSL_CTX_Init_Client()
 
 int SSL_CTX_DeInit(SSL_CTX *ctx)
 {
-	SSL_CTX_free(ctx);
+	if(ctx)
+		SSL_CTX_free(ctx);
 }
 
 SSL_CLIENT_DATA *SSL_Connect_To(char *ip, int servport)
@@ -194,16 +195,16 @@ void SSL_Connect_Close(SSL_CLIENT_DATA *ssl_data)
 
 //TODO: we need to close the listening socket somewhere
 //and we also need to free the SSL_CTX somewhere
-static void Server_Int()
+static void Server_INTR()
 {
-	printf("Server quit, bye bye!\n");
+	printf("bye bye, see you later :\)\n");
 	return;
 }
 
-int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)(SSL_CLIENT_DATA*))
+int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)(SSL_CLIENT_DATA*, int epollfd))
 {
 	/*Handle the INTERRUPT signal*/
-	signal(SIGINT, Server_Int);
+	signal(SIGINT, Server_INTR);
 
 	int listenfd, connfd;
 	int recvLen, sendLen;
@@ -264,8 +265,14 @@ int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)
 	while(1){
 		nfds = epoll_wait(epollfd, events, maxEvents, -1);
 		if (nfds == -1) {
-			perror("epoll_wait()");
-			return -1;
+			if(EINTR==errno)
+			{
+				printf("Interrupted. Server quit.\n");
+				break;
+			}else{
+				perror("epoll_wait()");
+				break;
+			}
 		}
 
 		for(n = 0; n < nfds; ++n) {
@@ -296,17 +303,22 @@ int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)
 					return -1;
 				}
 			}else{
-				clientHandler(events[n].data.ptr);
+				clientHandler(events[n].data.ptr, epollfd);
 			}
 		} /*end for loop*/
 	} /*end while*/
+
+	/*Listening socket end, do some cleaning...*/	
+    close(listenfd);
+    SSL_CTX_DeInit(ctx);
 }
 
-void SSL_Client_Leave(SSL_CLIENT_DATA *ssl_data)
+void SSL_Client_Leave(SSL_CLIENT_DATA *ssl_data, int epollfd)
 {
 	/*close ssl connection*/
 	int sockfd = SSL_get_fd(ssl_data->ssl);
 	SSL_DeInit(ssl_data->ssl);
 	close(sockfd);
 	free(ssl_data);
+	epoll_ctl(epollfd, EPOLL_CTL_DEL, sockfd, NULL);
 }

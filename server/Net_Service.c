@@ -8,7 +8,7 @@
 #include "../lib/SSL/SSL_Wrapper.h"
 #include "util.h"
 
-void HandleClientMsg(SSL_CLIENT_DATA* ssl_data)
+void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
 		return;
@@ -20,7 +20,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data)
 	if(recvLen <= 0 || strncmp(buffer, "quit", 4)==0)
 	{
 		printf("client quit!\n");
-		SSL_Client_Leave(ssl_data);
+		SSL_Client_Leave(ssl_data, epollfd);
 		return;
 	}
 	printf("Receive from client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);
