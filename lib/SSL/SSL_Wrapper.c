@@ -209,8 +209,8 @@ int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)
 	int listenfd, connfd;
 	int recvLen, sendLen;
 	int epollfd, nfds, n;
-	socklen_t client_len;
 	struct sockaddr_in cliaddr, servaddr;
+	socklen_t client_len = sizeof(cliaddr);
 	char buffer[1024];
 	struct epoll_event ev, events[maxEvents];
 	SSL_CTX *ctx;
