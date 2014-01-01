@@ -197,7 +197,7 @@ void SSL_Connect_Close(SSL_CLIENT_DATA *ssl_data)
 //and we also need to free the SSL_CTX somewhere
 static void Server_INTR()
 {
-	printf("bye bye, see you later :\)\n");
+	printf("bye bye, see you later.\n");
 	return;
 }
 
@@ -209,8 +209,8 @@ int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)
 	int listenfd, connfd;
 	int recvLen, sendLen;
 	int epollfd, nfds, n;
-	socklen_t client_len;
 	struct sockaddr_in cliaddr, servaddr;
+	socklen_t client_len = sizeof(cliaddr);
 	char buffer[1024];
 	struct epoll_event ev, events[maxEvents];
 	SSL_CTX *ctx;
@@ -321,4 +321,18 @@ void SSL_Client_Leave(SSL_CLIENT_DATA *ssl_data, int epollfd)
 	close(sockfd);
 	free(ssl_data);
 	epoll_ctl(epollfd, EPOLL_CTL_DEL, sockfd, NULL);
+}
+
+int SSL_recv(SSL *ssl, void *buf, int num)
+{
+	if(!ssl || !buf || num<=0)
+		return -1;
+	return SSL_read(ssl, buf, num);
+}
+
+int SSL_send(SSL *ssl, const void *buf, int num)
+{
+	if(!ssl || !buf || num <=0)
+		return -1;
+	return SSL_write(ssl, buf, num);
 }

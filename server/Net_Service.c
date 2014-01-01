@@ -16,7 +16,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	char buffer[1024];
 	int recvLen;
 	bzero(buffer, 1024);
-	recvLen = SSL_read(ssl, buffer, 1024);
+	recvLen = SSL_recv(ssl, buffer, 1024);
 	if(recvLen <= 0 || strncmp(buffer, "quit", 4)==0)
 	{
 		printf("client quit!\n");
@@ -25,7 +25,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}
 	printf("Receive from client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);
 	fflush(NULL);
-	SSL_write(ssl, "Hello client!\n", 14);
+	SSL_send(ssl, "Hello client!\n", 14);
 }
 
 
@@ -37,9 +37,6 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
  */
 int NetworkServiceStart()
 {
-	int status = SSL_Listening_Loop(SERVER_PORT, MAX_EVENTS,SERVER_CERT_FILE, HandleClientMsg);
+	return SSL_Listening_Loop(SERVER_PORT, MAX_EVENTS,SERVER_CERT_FILE, HandleClientMsg);
 	//TODO: MUST find some approximate time to stop listening.
-	//close(listenfd);
-	//SSL_CTX_DeInit(ctx);
-	return status;
 }

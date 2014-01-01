@@ -26,3 +26,6 @@ extern SSL_CLIENT_DATA *SSL_Connect_To(char *ip, int servport);
 extern void SSL_Connect_Close(SSL_CLIENT_DATA *ssl_data);
 extern int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)(SSL_CLIENT_DATA*, int));
 extern void SSL_Client_Leave(SSL_CLIENT_DATA *ssl_data, int epollfd);
+
+extern int SSL_recv(SSL *ssl, void *buf, int num);
+extern int SSL_send(SSL *ssl, const void *buf, int num);
