@@ -7,19 +7,40 @@
 #include <arpa/inet.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <signal.h>
 
 #include "util.h"
-#include "../lib/SSL/SSL_Wrapper.h"
+#include "../lib/SSL_Wrapper.h"
 #include "../lib/cJSON/cJSON.h"
 
-void SendInformation(char *ip, int port)
+char *CreateNewAccountJSON(char *name, char *passwd, char *email)
 {
-	char buffer[1024];
+	cJSON *newAccount = cJSON_CreateObject();
+	cJSON_AddStringToObject(newAccount, "cmd", "register");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(newAccount, "attr", attr);
+	cJSON_AddStringToObject(attr, "username", name);
+	cJSON_AddStringToObject(attr, "password", passwd);
+	cJSON_AddStringToObject(attr, "email", email);
+	char *accountStr = cJSON_Print(newAccount);
+	cJSON_Delete(newAccount);
+	return accountStr;
+}
+
+/*Register a new user*/
+int RegisterAccount(char *name, char *passwd, char *email)
+{
+	if(!name || !passwd || !email)
+		return -1;
+	char buffer[1024], *accountStr;
 	int sendLen, recvLen;
-	SSL_CLIENT_DATA *ssl_data = SSL_Connect_To(ip, port);
+	
+	accountStr = CreateNewAccountJSON(name, passwd, email);
+	printf("account:%s\n", accountStr);
+
+	SSL_CLIENT_DATA *ssl_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
 	SSL *ssl = ssl_data->ssl;
-	sprintf(buffer, "%s", "This is a client test!");	
-	SSL_send(ssl, buffer, strlen(buffer)+1);
+	SSL_send(ssl, accountStr, strlen(accountStr));
 	bzero(buffer, 1024);
 	recvLen = SSL_recv(ssl, buffer, 1024);
 	if(recvLen>0)
@@ -28,27 +49,95 @@ void SendInformation(char *ip, int port)
 		fflush(NULL);
 	}
 
-	sleep(4);
 	SSL_Connect_Close(ssl_data);
+	free(accountStr);
 }
 
+/*To register a new user*/
 void Register()
 {
-	SendInformation(SERVER_IP, SERVER_PORT);
+	char name[256], passwd[256], email[256];
+	bzero(name, 256);
+	bzero(passwd, 256);
+	bzero(email, 256);
+	printf("UserName:");
+	fgets(name, 256, stdin);
+	if(Sanitize(name)<=0)
+	{
+		printf("UserName can not be empty. Exit.\n");
+		return;
+	}
+	printf("Password:");
+	fgets(passwd, 256, stdin);
+	if(Sanitize(passwd)<=0)
+	{
+		printf("Password can not be empty. Exit.\n");
+		return;
+	}
+
+	printf("Email:");
+	fgets(email, 256, stdin);
+	if(Sanitize(email)<=0)
+	{
+		printf("Email can not be empty. Exit.\n");
+		return;
+	}
+
+	printf("User name:%s; Password:%s; email:%s;\n", name, passwd, email);
+	RegisterAccount(name, passwd, email);
 }
 
+/*Sanitize the user input, delete all the blank in the front and end*/
 int Sanitize(char input[])
 {
+	if(!input)
+		return 0;
+	int leadBlank=0, i=0;
 	int len = strlen(input);
 	if(input[len-1]=='\n')
 	{
 		input[--len] = '\0';
 	}
+
+	for(len; len>0; len--)
+	{
+		if(isspace(input[len-1]))
+		{
+			input[len] = '\0';
+		}else{
+			break;
+		}
+	}
+
+	while(leadBlank<len)
+	{
+		if(!isspace(input[leadBlank]))
+		{
+			break;
+		}
+		leadBlank++;
+	}	
+
+	if(leadBlank>0)
+	{
+		len -= leadBlank;
+		for(i=0; i<len;i++)
+			input[i] = input[i+leadBlank];
+		input[len] = '\0';
+	}
+	
 	return len;
+}
+
+void Client_Intr(int signum)
+{
+	printf("Client quit, bye.\n");
+	return;
 }
 
 int Client_Service_Start(char *ip, int servport)
 {
+	signal(SIGINT, Client_Intr);
 	while(1)
 	{
 		char cmd[256];
@@ -63,36 +152,11 @@ int Client_Service_Start(char *ip, int servport)
 
 		if(0==strcmp("reg", cmd))
 		{
-			char name[256], passwd[256], email[256];
-			bzero(name, 256);
-			bzero(passwd, 256);
-			bzero(email, 256);
-			printf("UserName:");
-			fgets(name, 256, stdin);
-			if(Sanitize(name)==0)
-			{
-				printf("UserName can not be empty. Exit.\n");
-				continue;
-			}
-			printf("Password:");
-			fgets(passwd, 256, stdin);
-			if(Sanitize(passwd)==0)
-			{
-				printf("Password can not be empty. Exit.\n");
-				continue;
-			}
-
-			printf("Email:");
-			fgets(email, 256, stdin);
-			if(Sanitize(email)==0)
-			{
-				printf("Email can not be empty. Exit.\n");
-				continue;
-			}
+			
 			Register();
 		}else if(0==strcmp("quit", cmd)){
 			printf("Client quit, bye.\n");
-			exit(0);
+			return 0;
 		}else{
 			printf("Commands usable:\n\n");
 			printf("1.reg: register a new user.\n");

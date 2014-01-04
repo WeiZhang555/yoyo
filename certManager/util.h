@@ -5,5 +5,4 @@
 #define SERVER_CERT_FILE "CMCert.pem"
 #define MAX_EVENTS 100
 
-
 #endif

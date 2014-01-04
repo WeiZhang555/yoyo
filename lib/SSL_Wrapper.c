@@ -6,7 +6,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
-#include <signal.h>
 
 #include "SSL_Wrapper.h"
 
@@ -72,7 +71,7 @@ SSL *SSL_Init_Client(SSL_CTX *ctx, int sockfd)
 		return NULL;
 	}else{
 		printf("Connected with %s encryption\n", SSL_get_cipher(ssl));
-		ShowCerts(ssl);
+		//ShowCerts(ssl);
 	}
 	return ssl;
 }
@@ -192,20 +191,8 @@ void SSL_Connect_Close(SSL_CLIENT_DATA *ssl_data)
 	free(ssl_data);
 }
 
-
-//TODO: we need to close the listening socket somewhere
-//and we also need to free the SSL_CTX somewhere
-static void Server_INTR()
-{
-	printf("bye bye, see you later.\n");
-	return;
-}
-
 int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)(SSL_CLIENT_DATA*, int epollfd))
 {
-	/*Handle the INTERRUPT signal*/
-	signal(SIGINT, Server_INTR);
-
 	int listenfd, connfd;
 	int recvLen, sendLen;
 	int epollfd, nfds, n;
