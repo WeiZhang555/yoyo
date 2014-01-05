@@ -136,7 +136,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 static void Server_Intr()
 {
 	printf("Server quit, bye.\n");
-	return;
+	return ;
 }
 
 /**
