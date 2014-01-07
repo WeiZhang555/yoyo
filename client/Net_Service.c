@@ -139,7 +139,7 @@ int RegisterAccount(char *name, char *passwd, char *email)
 		return -1;
 	}
 	/*Step 2: get the private cert of the client from certManager.*/
-	GetCertFromCM(name, email);
+	//GetCertFromCM(name, email);
 	/*Step 3: tell the server that the cert has been prepared well*/
 
 }

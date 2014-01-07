@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <mysql.h>
 #include <openssl/sha.h>
 
@@ -62,6 +63,9 @@ int DB_Check_User(char *username)
  *Insert user into the database.
  *return; -1 for error, 0 for success.
  */
+
+extern int Base64Encode(const uint8_t* buffer, size_t length, char** b64text);
+
 int DB_Insert_User(char *username, char *password, char *email)
 {
 	char salt[21]={0};
@@ -70,23 +74,29 @@ int DB_Insert_User(char *username, char *password, char *email)
 	char name_es[strlen(username)*2+1], email_es[strlen(email)*2+1];
 	mysql_real_escape_string(con, name_es, username, strlen(username));
 	mysql_real_escape_string(con, email_es, email, strlen(email));
-
+	
 	/*Generate the SHA hash string as the new password*/
 	char newpass[1024] = {0};
 	strcpy(newpass, password);
 	strcat(newpass, salt);
 	unsigned char digest[SHA_DIGEST_LENGTH];
-    
+
+	printf("SHA length:%d\n", SHA_DIGEST_LENGTH);
+	/*Get the SHA1 digest with salt */    
     SHA1(newpass, strlen(newpass), (unsigned char*)&digest);    
+	/*Get the base64 string of the digest, for convenience of database store.*/
+	char *base64Digest = NULL;
+	Base64Encode(digest, SHA_DIGEST_LENGTH, &base64Digest);
 
 	char sql[1024];
 	snprintf(sql, 1024, "INSERT INTO users(username, password, salt, email) values('%s', '%s', '%s', '%s')",
-						name_es, digest, salt, email_es);
+						name_es, base64Digest, salt, email_es);
 	if(mysql_query(con, sql))
 	{
 		printf("mysql_query error()!\n");
 		return -1;
 	}
 
+	free(base64Digest);
 	return 0;
 }

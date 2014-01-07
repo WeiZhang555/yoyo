@@ -4,7 +4,7 @@
 
 void Get_RandStr(char s[],int num)
 {
-	char *str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz,./;\"'<>?";
+	char *str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-,.<>";
 	int i,lstr;
 	char ss[2] = {0};
 	lstr = strlen(str);
