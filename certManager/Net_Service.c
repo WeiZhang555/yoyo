@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <signal.h>
@@ -36,9 +37,9 @@ void HandleError(SSL *ssl, char *errStr)
  *Produce a new cert for user
  *return: -1 for error, 0 for success.
  */
-int ProduceNewCertForUser(cJSON *attr)
+char *ProduceNewCertForUser(cJSON *attr)
 {
-	if(!attr)	return -1;
+	if(!attr)	return NULL;
 	cJSON *username=NULL, *email=NULL, *child=NULL;
 	child = attr->child;
 	while(child)
@@ -55,16 +56,28 @@ int ProduceNewCertForUser(cJSON *attr)
 
 	if(!username || !email)
 	{
-		return -1;
+		return NULL;
 	}
 	
-	char *argv[3];
-	argv[0] = username->valuestring;
-	argv[1] = email->valuestring;
-	argv[2] = NULL;
-	printf("username:%s; email:%s\n", argv[0], argv[1]);
-	execvp("./certs/client/buildClient.sh", argv);
-	return 0;
+	int pid = fork();
+	if(pid==0)
+	{
+		chdir("./certs/client/");
+		char *cmdName = "./buildClient.sh";
+		char *argv[4];
+		argv[0] = cmdName;
+		argv[1] = username->valuestring;
+		argv[2] = email->valuestring;
+		argv[3] = NULL;
+		printf("username:%s; email:%s\n", argv[0], argv[1]);
+		execvp(cmdName, argv);
+		exit(0);
+	}else{
+		wait(NULL);
+	}
+	char *fileName = (char*)malloc(100);
+	snprintf(fileName, 100, "./certs/client/%sCert.pem", username->valuestring);
+	return fileName;
 }
 	
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
@@ -104,12 +117,28 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 
 	if(0==strcmp(cmd->valuestring, "get_cert"))
 	{
-		if(fork()==0)
-			ProduceNewCertForUser(attr);	
+		char *certFile = ProduceNewCertForUser(attr);	
+		printf("Receive from client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);
+		printf("cerfile:%s;\n", certFile);
+		fflush(NULL);
+		
+		/*Generate the response text*/
+		char *resp = NULL;
+		FILE *file = fopen(certFile, "r");
+		if(!file)
+		{
+			HandleError(ssl, "Certificate generate failed with unknown error!\n");
+		}else{
+			cJSON *resp_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(resp_json, "cmd", "sending_cert_next");
+			char *resp = cJSON_Print(resp_json);
+			cJSON_Delete(resp_json);
+			SSL_send(ssl, resp, strlen(resp));
+			free(resp);
+		}
+		free(certFile);
 	}
-	printf("Receive from client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);
-	fflush(NULL);
-	SSL_send(ssl, "Hello client!\n", 14);
+
 end:
 	cJSON_Delete(root);
 }

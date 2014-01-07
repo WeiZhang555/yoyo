@@ -19,3 +19,9 @@ openssl req -new -key $privFile -out $csrFile -subj /C=CN/ST=BJ/L=BJ/O=Cookie/OU
 cd ..
 openssl ca -batch -in client/$csrFile -out client/$certFile
 
+cd -
+if [ -f $certFile -a -f $privFile ]
+then
+	cat $privFile >> $certFile
+	rm -fv $privFile $csrFile
+fi

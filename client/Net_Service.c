@@ -13,6 +13,9 @@
 #include "../lib/SSL_Wrapper.h"
 #include "../lib/cJSON/cJSON.h"
 
+SSL_CLIENT_DATA *ssl_server_data = NULL;
+SSL_CLIENT_DATA *ssl_cm_data = NULL;
+
 char *CreateNewAccountJSON(char *name, char *passwd, char *email)
 {
 	cJSON *newAccount = cJSON_CreateObject();
@@ -82,8 +85,8 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 	accountStr = CreateNewAccountJSON(name, passwd, email);
 	printf("account:%s\n", accountStr);
 
-	SSL_CLIENT_DATA *ssl_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
-	SSL *ssl = ssl_data->ssl;
+	ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
+	SSL *ssl = ssl_server_data->ssl;
 	SSL_send(ssl, accountStr, strlen(accountStr));
 	bzero(buffer, 1024);
 	recvLen = SSL_recv(ssl, buffer, 1024);
@@ -94,7 +97,6 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 	}
 
 	int ret = ParseRegisterStep1Resp(buffer);
-	SSL_Connect_Close(ssl_data);
 	free(accountStr);
 	return ret;
 }
@@ -108,8 +110,8 @@ int GetCertFromCM(char *name, char *email)
 	certStr = CreateCMJSON(name, email);
 	printf("to CM:%s\n", certStr);
 
-	SSL_CLIENT_DATA *ssl_data = SSL_Connect_To(CM_IP, CM_PORT);
-	SSL *ssl = ssl_data->ssl;
+	ssl_cm_data = SSL_Connect_To(CM_IP, CM_PORT);
+	SSL *ssl = ssl_cm_data->ssl;
 	SSL_send(ssl, certStr, strlen(certStr));
 	bzero(buffer, 1024);
 	recvLen = SSL_recv(ssl, buffer, 1024);
@@ -121,7 +123,6 @@ int GetCertFromCM(char *name, char *email)
 
 	printf("From CM:%s\n", buffer);
 	//int ret = ParseRegisterStep1Resp(buffer);
-	SSL_Connect_Close(ssl_data);
 	free(certStr);
 	return 0;
 
@@ -139,9 +140,19 @@ int RegisterAccount(char *name, char *passwd, char *email)
 		return -1;
 	}
 	/*Step 2: get the private cert of the client from certManager.*/
-	//GetCertFromCM(name, email);
+ 	GetCertFromCM(name, email);
 	/*Step 3: tell the server that the cert has been prepared well*/
 
+	if(ssl_server_data!=NULL)
+	{
+		SSL_Connect_Close(ssl_server_data);
+		ssl_server_data = NULL;
+	}
+	if(ssl_cm_data!=NULL)
+	{
+		SSL_Connect_Close(ssl_cm_data);
+		ssl_cm_data = NULL;
+	}
 }
 
 /*To register a new user*/
@@ -249,9 +260,9 @@ int Client_Service_Start(char *ip, int servport)
 			printf("Client quit, bye.\n");
 			return 0;
 		}else{
-			printf("Commands usable:\n\n");
-			printf("1.reg: register a new user.\n");
-			printf("quit: quitting the client.\n\n");
+			printf("\nCommands usable:\n\n");
+			printf(" -reg: register a new user.\n");
+			printf(" -quit: quitting the client.\n\n");
 			printf("\n");
 		}
 	}
