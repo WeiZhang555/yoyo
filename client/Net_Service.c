@@ -221,6 +221,23 @@ int ParseLoginResponse(char *buffer)
 void Heartbeat(int sig)
 {
 	printf("Heartbeat!\n");
+	cJSON *pulseJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(pulseJson, "cmd", "query_pulse");
+	char *pulseStr = cJSON_Print(pulseJson);
+	cJSON_Delete(pulseJson);
+	if(!ssl_server_data)
+	{
+		setitimer(ITIMER_REAL, NULL, NULL);
+		return;
+	}
+	if(0>=SSL_send(ssl_server_data->ssl, pulseStr, strlen(pulseStr)))
+	{
+		setitimer(ITIMER_REAL, NULL, NULL);
+		Disconnect_Server();
+		free(pulseStr);
+		return;
+	}
+	free(pulseStr);
 	fflush(NULL);
 }
 
