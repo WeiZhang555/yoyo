@@ -185,11 +185,14 @@ SSL_CLIENT_DATA *SSL_Connect_To(char *ip, int servport)
 void SSL_Connect_Close(SSL_CLIENT_DATA *ssl_data)
 {
 	/*close ssl connection*/
-	int sockfd = SSL_get_fd(ssl_data->ssl);
-	SSL_DeInit(ssl_data->ssl);
-	SSL_CTX_DeInit(ssl_data->ctx);
-	close(sockfd);
-	free(ssl_data);
+	if(ssl_data)
+	{
+		int sockfd = SSL_get_fd(ssl_data->ssl);
+		SSL_DeInit(ssl_data->ssl);
+		SSL_CTX_DeInit(ssl_data->ctx);
+		close(sockfd);
+		free(ssl_data);
+	}
 }
 
 int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)(SSL_CLIENT_DATA*, int epollfd))
@@ -305,11 +308,14 @@ int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)
 void SSL_Client_Leave(SSL_CLIENT_DATA *ssl_data, int epollfd)
 {
 	/*close ssl connection*/
-	int sockfd = SSL_get_fd(ssl_data->ssl);
-	SSL_DeInit(ssl_data->ssl);
-	close(sockfd);
-	free(ssl_data);
-	epoll_ctl(epollfd, EPOLL_CTL_DEL, sockfd, NULL);
+	if(ssl_data)
+	{
+		int sockfd = SSL_get_fd(ssl_data->ssl);
+		SSL_DeInit(ssl_data->ssl);
+		close(sockfd);
+		free(ssl_data);
+		epoll_ctl(epollfd, EPOLL_CTL_DEL, sockfd, NULL);
+	}
 }
 
 int SSL_recv(SSL *ssl, void *buf, int num)

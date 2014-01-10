@@ -264,7 +264,13 @@ int Login()
 		return -1;
 	}
 
-	SSL_send(ssl_server_data->ssl, loginStr, strlen(loginStr));
+	if(0>=SSL_send(ssl_server_data->ssl, loginStr, strlen(loginStr)))
+	{
+		printf("Can not send information to server!\n");
+		free(loginStr);
+		Disconnect_Server();
+		return -1;
+	}
 	free(loginStr);
 	char buffer[1024]={0};
 	int recvLen = SSL_recv(ssl_server_data->ssl, buffer, 1024);
@@ -281,9 +287,10 @@ int Login()
 		printf("Login successfully!\n");
 		/*Set the timer to generate heartbeat pulse to the server periodly*/
 		struct itimerval value;
-		value.it_value.tv_sec = PULSE_INTERVAL;
+		value.it_value.tv_sec = 0;
 		value.it_value.tv_usec = 0;
-		value.it_interval = value.it_value;
+		value.it_interval.tv_sec = PULSE_INTERVAL ;
+		value.it_interval.tv_usec = 0;
 		setitimer(ITIMER_REAL, &value, NULL);
 		signal(SIGALRM, Heartbeat);
 	}
@@ -328,7 +335,14 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 		ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
 	if(!ssl_server_data)	return -1;
 	SSL *ssl = ssl_server_data->ssl;
-	SSL_send(ssl, accountStr, strlen(accountStr));
+	if(0>=SSL_send(ssl, accountStr, strlen(accountStr)))
+	{
+		printf("Can not send information to server!\n");
+		free(accountStr);
+		Disconnect_Server();
+		return -1;
+	}
+	free(accountStr);
 	bzero(buffer, 1024);
 	recvLen = SSL_recv(ssl, buffer, 1024);
 	if(recvLen<=0)
@@ -340,7 +354,6 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 
 	printf("From Server:\n%s\n", buffer);
 	int ret = ParseRegisterStep1Resp(buffer);
-	free(accountStr);
 	return ret;
 }
 
@@ -359,7 +372,14 @@ int GetCertFromCM(char *name, char *email)
 	if(!ssl_cm_data)
 		return -1;
 	SSL *ssl = ssl_cm_data->ssl;
-	SSL_send(ssl, certStr, strlen(certStr));
+	if(0>=SSL_send(ssl, certStr, strlen(certStr)))
+	{
+		printf("Can not send information to server!\n");
+		free(certStr);
+		Disconnect_Server();
+		return -1;
+	}
+	free(certStr);
 	bzero(buffer, 1024);
 	recvLen = SSL_recv(ssl, buffer, 1024);
 	if(recvLen<=0)
@@ -371,7 +391,6 @@ int GetCertFromCM(char *name, char *email)
 
 	printf("From CM:%s\n", buffer);
 	int ret = ParseRegisterStep2Resp(buffer);
-	free(certStr);
 	return ret;
 
 }
@@ -495,13 +514,21 @@ int Sanitize(char input[])
 
 void Client_Intr(int signum)
 {
+	Disconnect_Server();
+	Disconnect_CM();
 	printf("Client quit, bye.\n");
 	exit(0);
+}
+
+void Server_Down(int signum)
+{
+	printf("Server unavailable.\n");
 }
 
 int Client_Service_Start(char *ip, int servport)
 {
 	signal(SIGINT, Client_Intr);
+	signal(SIGPIPE, Server_Down);
 	while(1)
 	{
 		char cmd[256];
