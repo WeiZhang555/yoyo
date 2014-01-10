@@ -156,26 +156,19 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 				/*Next we must send the cert file to the client*/
 				rewind(file);
 				char buffer[512]={0};
-				int len = 0, sendLen=0, error=0;
+				int len = 0, sendLen=0;
 				while(!feof(file))
 				{
 					printf("Sending cert....\n");
 					len = fread(buffer, sizeof(char), 511, file);
 					if(len<=0)
-					{
-						error=1;
 						break;
-					}
 					buffer[len] = '\0';
 					sendLen = SSL_send(ssl, buffer, len);
 					if(sendLen<len)
-					{	
-						error = 1;
 						break;
-					}
 				}
-				if(!error)
-					SSL_send(ssl, "!@done*#", 8);
+				SSL_send(ssl, "!@done*#", 8);
 				fclose(file);
 			}
 		}
@@ -195,7 +188,7 @@ static void Server_Intr()
 
 static void Connection_Down()
 {
-	printf("Connection done, bye.\n");
+	printf("Connection down!\n");
 	return;
 }
 

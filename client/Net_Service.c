@@ -112,6 +112,7 @@ int ReceiveCertFromCM(cJSON *attr)
 				fwrite(buffer, sizeof(char), len, f);
 		}
 	}
+
 	if(!f)
 		return -1;
 	
