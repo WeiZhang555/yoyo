@@ -72,9 +72,84 @@ int ParseRegisterStep1Resp(char *buffer)
 	{
 		printf("User has been registered into the server, waiting to get the private certificate.\n");
 	}
+	cJSON_Delete(root);
 	return 0;
 }
 
+int ReceiveCertFromCM(cJSON *attr)
+{
+	if(!attr)
+		return -1;
+	char *certFile = NULL;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "filename"))
+		{
+			certFile = child->valuestring;
+		}
+		child = child->next;
+	}
+
+	printf("Cert name:%s\n", certFile);
+	if(!certFile)	return -1;
+	FILE *f = fopen(certFile, "w");
+	if(!f)
+		printf("Certificate file [%s] can not open!\n", certFile);
+	char buffer[512];
+	int len = 0;
+	while(1)
+	{
+		len = SSL_recv(ssl_cm_data->ssl,buffer, 511);
+		if(len <=0)
+			break;
+		buffer[len] = '\0';
+		if(0==strcmp("!@done*#",buffer ))
+			break;
+		else
+		{
+			if(f)
+				fwrite(buffer, sizeof(char), len, f);
+		}
+	}
+	if(!f)
+		return -1;
+	
+	fclose(f);
+	return 0;
+}
+
+int ParseRegisterStep2Resp(char *buffer)
+{
+	if(!buffer)
+		return -1;
+	cJSON *root=NULL, *child=NULL, *cmd=NULL, *attr = NULL;
+	root = cJSON_Parse(buffer);
+	if(!root)
+		return -1;
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(!cmd)	return -1;
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		if(attr->child)
+			printf("Error:%s\n", attr->child->valuestring);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "sending_cert_next"))
+	{
+		ReceiveCertFromCM(attr);
+	}
+	cJSON_Delete(root);
+	return 0;
+}
 
 /*Registration step 1: log the user information into the server database*/
 int RegisterIntoServer(char *name, char *passwd, char *email)
@@ -86,6 +161,7 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 	printf("account:%s\n", accountStr);
 
 	ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
+	if(!ssl_server_data)	return -1;
 	SSL *ssl = ssl_server_data->ssl;
 	SSL_send(ssl, accountStr, strlen(accountStr));
 	bzero(buffer, 1024);
@@ -104,6 +180,7 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 /*Registration step 2: Ask the Cert Manager to generate a new certificate for this client.*/
 int GetCertFromCM(char *name, char *email)
 {
+	if(!name || !email)	return -1;
 	char buffer[1024], *certStr;
 	int sendLen, recvLen;
 	
@@ -111,6 +188,8 @@ int GetCertFromCM(char *name, char *email)
 	printf("to CM:%s\n", certStr);
 
 	ssl_cm_data = SSL_Connect_To(CM_IP, CM_PORT);
+	if(!ssl_cm_data)
+		return -1;
 	SSL *ssl = ssl_cm_data->ssl;
 	SSL_send(ssl, certStr, strlen(certStr));
 	bzero(buffer, 1024);
@@ -121,7 +200,8 @@ int GetCertFromCM(char *name, char *email)
 		return -1;
 	}
 
-	printf("From CM:%s\n", buffer);
+	//printf("From CM:%s\n", buffer);
+	ParseRegisterStep2Resp(buffer);
 	//int ret = ParseRegisterStep1Resp(buffer);
 	free(certStr);
 	return 0;

@@ -5,4 +5,6 @@
 #define SERVER_CERT_FILE "CMCert.pem"
 #define MAX_EVENTS 100
 
+#define CLIENT_CERT_PATH "certs/client/"
+
 #endif

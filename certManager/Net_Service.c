@@ -119,7 +119,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	{
 		char *certFile = ProduceNewCertForUser(attr);	
 		printf("Receive from client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);
-		printf("cerfile:%s;\n", certFile);
+		printf("certfile:%s;\n", certFile);
 		fflush(NULL);
 		
 		/*Generate the response text*/
@@ -129,13 +129,57 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 		{
 			HandleError(ssl, "Certificate generate failed with unknown error!\n");
 		}else{
-			cJSON *resp_json = cJSON_CreateObject();
-			cJSON_AddStringToObject(resp_json, "cmd", "sending_cert_next");
-			char *resp = cJSON_Print(resp_json);
-			cJSON_Delete(resp_json);
-			SSL_send(ssl, resp, strlen(resp));
-			free(resp);
+			fseek(file, 0L, SEEK_END);
+			if(0==ftell(file))
+			{
+				HandleError(ssl, "Certificate generate failed with unknown error!\n");
+				fclose(file);
+				remove(certFile);
+			}else{
+				/*Calculate. Remove all the path prefix, leave the pure file name*/
+				char *fileName = certFile, *ret=NULL;
+				ret = strtok(certFile, "/");
+				while(ret)
+				{
+					fileName = ret;
+					ret = strtok(NULL, "/");
+				}
+				cJSON *resp_json = cJSON_CreateObject();
+				cJSON_AddStringToObject(resp_json, "cmd", "sending_cert_next");
+				cJSON *attr = cJSON_CreateObject();
+				cJSON_AddItemToObject(resp_json, "attr", attr);
+				cJSON_AddStringToObject(attr, "filename", fileName);
+				char *resp = cJSON_Print(resp_json);
+				cJSON_Delete(resp_json);
+				SSL_send(ssl, resp, strlen(resp));
+				free(resp);
+				/*Next we must send the cert file to the client*/
+				rewind(file);
+				char buffer[512]={0};
+				int len = 0, sendLen=0, error=0;
+				while(!feof(file))
+				{
+					printf("Sending cert....\n");
+					len = fread(buffer, sizeof(char), 511, file);
+					if(len<=0)
+					{
+						error=1;
+						break;
+					}
+					buffer[len] = '\0';
+					sendLen = SSL_send(ssl, buffer, len);
+					if(sendLen<len)
+					{	
+						error = 1;
+						break;
+					}
+				}
+				if(!error)
+					SSL_send(ssl, "!@done*#", 8);
+				fclose(file);
+			}
 		}
+		
 		free(certFile);
 	}
 
@@ -149,6 +193,12 @@ static void Server_Intr()
 	return;
 }
 
+static void Connection_Down()
+{
+	printf("Connection done, bye.\n");
+	return;
+}
+
 /**
  *Start the network service, this is the main part of server.
  *return value: -1 if error occurs, 0 if everything is ok.
@@ -156,6 +206,7 @@ static void Server_Intr()
 int NetworkServiceStart()
 {
 	signal(SIGINT, Server_Intr);
+	signal(SIGPIPE, Connection_Down);
 	return SSL_Listening_Loop(SERVER_PORT, MAX_EVENTS,SERVER_CERT_FILE, HandleClientMsg);
 	//TODO: MUST find some approximate time to stop listening.
 }

@@ -17,7 +17,7 @@ openssl genrsa -out $privFile 2048
 openssl req -new -key $privFile -out $csrFile -subj /C=CN/ST=BJ/L=BJ/O=Cookie/OU=Cookie/CN=${commonName}/emailAddress=${email}
 
 cd ..
-openssl ca -batch -in client/$csrFile -out client/$certFile
+openssl ca -batch -in client/$csrFile -out client/$certFile -notext
 
 cd -
 if [ -f $certFile -a -f $privFile ]
