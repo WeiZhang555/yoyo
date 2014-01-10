@@ -167,7 +167,11 @@ int DB_Login(char *username, char *password)
 	}
 	
 	MYSQL_ROW row;
-	row = mysql_fetch_row(result);
+	if(!(row = mysql_fetch_row(result)) )
+	{
+		mysql_free_result(result);
+		return -2;
+	}
 
 	mysql_free_result(result);
 	

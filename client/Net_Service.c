@@ -287,7 +287,7 @@ int Login()
 		printf("Login successfully!\n");
 		/*Set the timer to generate heartbeat pulse to the server periodly*/
 		struct itimerval value;
-		value.it_value.tv_sec = 0;
+		value.it_value.tv_sec = PULSE_INTERVAL;
 		value.it_value.tv_usec = 0;
 		value.it_interval.tv_sec = PULSE_INTERVAL ;
 		value.it_interval.tv_usec = 0;
