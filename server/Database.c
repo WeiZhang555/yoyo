@@ -32,6 +32,7 @@ void DB_DeInit()
 	}
 }
 
+
 /**
  *check if the username existed in the database;
  *return: -1 for error, 0 for false, >0 for true
@@ -99,4 +100,99 @@ int DB_Insert_User(char *username, char *password, char *email)
 
 	free(base64Digest);
 	return 0;
+}
+
+/**
+ *update the client's certificate status to 1 
+ *which means the client has got her certs.
+ *return: -1 for error, 0 for success
+ */
+int DB_Update_Cert_Status(char *username)
+{
+	char to[strlen(username)*2+1];
+	mysql_real_escape_string(con, to, username, strlen(username));
+	char *prep = "SELECT * FROM users WHERE username='%s' LIMIT 1";
+	char sql[1024] = {0};
+	snprintf(sql, 1024, prep, to);
+	if (mysql_query(con, sql))
+	{
+		return -1;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL)
+	{
+		return -1;
+	}
+	int num_rows = mysql_num_rows(result);
+	mysql_free_result(result);
+	if(num_rows<=0)
+		return -1;
+
+	char *prepUp = "UPDATE users SET cert_status=1 where username='%s'";
+	bzero(sql, 1024);
+	snprintf(sql, 1024, prepUp, to);
+	if(mysql_query(con, sql))
+		return -1;
+
+	return 0;
+}
+
+/**
+ *Do the login process with username and password
+ *return: -1 for unknown error, -2 if user not exists, -3 if password is wrong, -4 if cert_status=0, 0 for success, 
+ */
+int DB_Login(char *username, char *password)
+{
+	//First get all the data from the database.
+	char to[strlen(username)*2+1];
+	mysql_real_escape_string(con, to, username, strlen(username));
+	char *prep = "SELECT password, salt, cert_status FROM users WHERE username='%s' LIMIT 1";
+	char sql[1024] = {0};
+	snprintf(sql, 1024, prep, to);
+	if (mysql_query(con, sql))
+	{
+		return -1;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL)
+	{
+		return -1;
+	}
+	int num_rows = mysql_num_rows(result);
+	if(num_rows<=0)
+	{
+		mysql_free_result(result);
+		return -2;
+	}
+	
+	MYSQL_ROW row;
+	row = mysql_fetch_row(result);
+
+	mysql_free_result(result);
+	printf("pass:%s; salt:%s; cert_status:%s;\n", row[0],row[1], row[2]);
+	
+	/*Generate the SHA hash string as the new password
+	 with password user provides and the salt in database.*/
+	char newpass[1024] = {0};
+	strncpy(newpass, password, 1000);
+	strcat(newpass, row[1]); /*concatate the salt from database*/
+	unsigned char digest[SHA_DIGEST_LENGTH];
+
+	/*Get the SHA1 digest with salt */    
+    SHA1(newpass, strlen(newpass), (unsigned char*)&digest);    
+	/*Get the base64 string of the digest, for convenience of database store.*/
+	char *base64Digest = NULL;
+	Base64Encode(digest, SHA_DIGEST_LENGTH, &base64Digest);
+	
+	/*check if the generated base64digest meet with the database*/
+	if(0!=strcmp(base64Digest, row[0]))	/*password not meet*/
+		return -3;
+
+	if(row[2]==0)
+		return -4;
+
+	return 0;
+		
 }

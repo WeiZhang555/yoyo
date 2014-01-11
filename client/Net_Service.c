@@ -15,6 +15,7 @@
 
 SSL_CLIENT_DATA *ssl_server_data = NULL;
 SSL_CLIENT_DATA *ssl_cm_data = NULL;
+char name[256]={0}, passwd[256]={0}, email[256]={0};
 
 char *CreateNewAccountJSON(char *name, char *passwd, char *email)
 {
@@ -147,9 +148,74 @@ int ParseRegisterStep2Resp(char *buffer)
 	}else if(0==strcmp(cmd->valuestring, "sending_cert_next"))
 	{
 		ReceiveCertFromCM(attr);
+		UpdateStatusAndLogin();
 	}
 	cJSON_Delete(root);
 	return 0;
+}
+
+
+/*Login process*/
+int Login()
+{
+	if(strlen(name)==0 || strlen(passwd)==0)
+		GetUserInput();
+
+	cJSON *loginJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(loginJson, "cmd", "login");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(loginJson, "attr", attr);
+	cJSON_AddStringToObject(attr, "username", name);
+	cJSON_AddStringToObject(attr, "password", passwd);
+	char *loginStr = cJSON_Print(loginJson);
+	cJSON_Delete(loginJson);
+	
+	if(!ssl_server_data)
+		ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
+	if(!ssl_server_data)	
+	{
+		free(loginStr);
+		printf("Connect to server failed!\n");
+		return -1;
+	}
+
+	SSL_send(ssl_server_data->ssl, loginStr, strlen(loginStr));
+	free(loginStr);
+	char buffer[1024]={0};
+	int recvLen = SSL_recv(ssl_server_data->ssl, buffer, 1024);
+	if(recvLen<=0)
+	{
+		printf("Unknown error from server.\n");
+		return -1;
+	}
+
+	printf("From Server:\n%s\n", buffer);
+	return 0;
+}
+
+/*Step 3: Update the cert status to ok(certificate prepared) and login */
+int UpdateStatusAndLogin()
+{
+	cJSON *upCert = cJSON_CreateObject();
+	cJSON_AddStringToObject(upCert, "cmd", "cert_status_ok");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(upCert, "attr", attr);
+	cJSON_AddStringToObject(attr, "username", name);
+	char *certStr = cJSON_Print(upCert);
+	cJSON_Delete(upCert);
+
+	if(!ssl_server_data)
+		ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
+	if(!ssl_server_data)	
+	{
+		printf("Connect to server failed!\n");
+		return -1;
+	}
+
+	SSL_send(ssl_server_data->ssl, certStr, strlen(certStr));
+	free(certStr);
+
+	Login();
 }
 
 /*Registration step 1: log the user information into the server database*/
@@ -161,7 +227,8 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 	accountStr = CreateNewAccountJSON(name, passwd, email);
 	printf("account:%s\n", accountStr);
 
-	ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
+	if(!ssl_server_data)
+		ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
 	if(!ssl_server_data)	return -1;
 	SSL *ssl = ssl_server_data->ssl;
 	SSL_send(ssl, accountStr, strlen(accountStr));
@@ -173,6 +240,7 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 		return -1;
 	}
 
+	printf("From Server:\n%s\n", buffer);
 	int ret = ParseRegisterStep1Resp(buffer);
 	free(accountStr);
 	return ret;
@@ -188,7 +256,8 @@ int GetCertFromCM(char *name, char *email)
 	certStr = CreateCMJSON(name, email);
 	printf("to CM:%s\n", certStr);
 
-	ssl_cm_data = SSL_Connect_To(CM_IP, CM_PORT);
+	if(!ssl_cm_data)
+		ssl_cm_data = SSL_Connect_To(CM_IP, CM_PORT);
 	if(!ssl_cm_data)
 		return -1;
 	SSL *ssl = ssl_cm_data->ssl;
@@ -201,9 +270,8 @@ int GetCertFromCM(char *name, char *email)
 		return -1;
 	}
 
-	//printf("From CM:%s\n", buffer);
+	printf("From CM:%s\n", buffer);
 	ParseRegisterStep2Resp(buffer);
-	//int ret = ParseRegisterStep1Resp(buffer);
 	free(certStr);
 	return 0;
 
@@ -236,10 +304,8 @@ int RegisterAccount(char *name, char *passwd, char *email)
 	}
 }
 
-/*To register a new user*/
-void Register()
+int GetUserInput()
 {
-	char name[256], passwd[256], email[256];
 	bzero(name, 256);
 	bzero(passwd, 256);
 	bzero(email, 256);
@@ -248,14 +314,14 @@ void Register()
 	if(Sanitize(name)<=0)
 	{
 		printf("UserName can not be empty. Exit.\n");
-		return;
+		return -1;
 	}
 	printf("Password:");
 	fgets(passwd, 256, stdin);
 	if(Sanitize(passwd)<=0)
 	{
 		printf("Password can not be empty. Exit.\n");
-		return;
+		return -1;
 	}
 
 	printf("Email:");
@@ -263,10 +329,20 @@ void Register()
 	if(Sanitize(email)<=0)
 	{
 		printf("Email can not be empty. Exit.\n");
-		return;
+		return -1;
 	}
 
 	printf("User name:%s; Password:%s; email:%s;\n", name, passwd, email);
+	return 0;
+}
+
+/*To register a new user*/
+void Register()
+{
+	if(0>GetUserInput())
+	{
+		printf("Get account information failed. Please check!\n");
+	}
 	RegisterAccount(name, passwd, email);
 }
 

@@ -81,6 +81,77 @@ void HandleRegister(SSL *ssl, cJSON *attr)
 	return;
 }
 
+int HandleCertStatusUpdate(SSL *ssl, cJSON *attr)
+{
+	cJSON *child = attr->child;
+	char *username=NULL;
+	while(child)
+	{
+		if(strcmp(child->string, "username")==0)
+		{
+			username = child->valuestring;
+		}
+		
+		child = child->next;
+	}
+
+	/*Just update the database silently.*/
+	int status = DB_Update_Cert_Status(username);
+	if(status < 0)
+	{
+		printf("Database update failed!");
+		return -1;
+	}
+
+	return 0;
+}
+
+int HandleLogin(SSL *ssl, cJSON *attr)
+{
+	if(!ssl || !attr)	return -1;
+	char *username=NULL, *password=NULL;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "username"))
+			username = child->valuestring;
+		else if(0==strcmp(child->string, "password"))
+			password = child->valuestring;
+
+		child = child->next;
+	}
+	
+	if(!username || !password)
+		return -1;
+	int status = DB_Login(username, password);
+	cJSON *respJson; char *respStr=NULL;
+	switch(status){
+		case -1:	/*Unknown Error*/
+			HandleError(ssl, "Unknown error!");
+			break;
+		case -2:	/*user not exists*/
+			HandleError(ssl, "User not exists.");
+			break;
+		case -3:	/*password wrong*/
+			HandleError(ssl, "Password is not right.");
+			break;
+		case -4:	/*cert status not ready*/
+			HandleError(ssl, "Certificate is not ready?");
+			break;
+		case 0:		/*correct*/
+    		respJson = cJSON_CreateObject();
+    		cJSON_AddStringToObject(respJson, "cmd", "success");
+    		respStr = cJSON_Print(respJson);
+    		cJSON_Delete(respJson);
+			SSL_send(ssl, respStr, strlen(respStr));
+			free(respStr);
+			break;
+		default:
+			break;
+	}
+	return 0;
+}
+
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
@@ -126,9 +197,13 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	if(0==strcmp(cmd->valuestring, "register"))
 	{
 		HandleRegister(ssl, attr);
+	}else if(0==strcmp(cmd->valuestring, "cert_status_ok"))
+	{
+		HandleCertStatusUpdate(ssl, attr);
+	}else if(0==strcmp(cmd->valuestring, "login"))
+	{
+		HandleLogin(ssl, attr);
 	}
-	
-	fflush(NULL);
 
 	cJSON_Delete(root);
 }
@@ -139,6 +214,12 @@ static void Server_Intr()
 	return ;
 }
 
+static void Pipe_Broken()
+{
+	printf("Pipe broken!\n");
+	return;
+}
+
 /**
  *Start the network service, this is the main part of server.
  *return value: -1 if error occurs, 0 if everything is ok.
@@ -146,6 +227,7 @@ static void Server_Intr()
 int NetworkServiceStart()
 {
 	signal(SIGINT, Server_Intr);
+	signal(SIGPIPE, Pipe_Broken);
 	return SSL_Listening_Loop(SERVER_PORT, MAX_EVENTS,SERVER_CERT_FILE, HandleClientMsg);
 	//TODO: MUST find some approximate time to stop listening.
 }
