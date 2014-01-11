@@ -11,6 +11,7 @@
 #include "../lib/SSL_Wrapper.h"
 #include "../lib/Security.h"
 #include "../lib/cJSON/cJSON.h"
+#include "../lib/Base64.h"
 #include "Util.h"
 #include "Database.h"
 #include "Session.h"

@@ -24,7 +24,9 @@ SSL_CLIENT_DATA *ssl_server_data = NULL;
 SSL_CLIENT_DATA *ssl_cm_data = NULL;
 char name[256]={0}, passwd[256]={0}, email[256]={0};
 int sid=-1;	/*Session id*/	
-extern char *CreateLoginJSON(char *name, char *passwd);
+
+extern int Base64Encode(const uint8_t* buffer, size_t length, char** b64text);
+extern int Base64Decode(char* b64message, uint8_t** buffer, size_t* length);
 void Heartbeat(int);
 
 void StartTimer()
@@ -226,7 +228,7 @@ int HandleSendingFile(cJSON *attr)
 	}
 	cJSON *child = attr->child;
 	int sid, q;
-	char *from, *filename, *xa_en;
+	char *from, *filename, *xa_en_base64;
 	while(child)
 	{
 		if(0==strcmp(child->string, "sid"))
@@ -238,14 +240,19 @@ int HandleSendingFile(cJSON *attr)
 		else if(0==strcmp(child->string, "q"))
 			q = child->valueint;
 		else if(0==strcmp(child->string, "xa_en"))
-			xa_en = child->valuestring;
+			xa_en_base64 = child->valuestring;
 		child = child->next;
 	}
 
 	char privKeyName[512]={0};
 	snprintf(privKeyName, 511, "%sCert.pem", name);
 	printf("Decrypt XA witk key file:%s; \n", privKeyName);
-	char *xa = RSA_Decrypt(xa_en, privKeyName);
+	char *xa_en;
+	int xa_en_len=0;
+	Base64Decode(xa_en_base64, &xa_en, &xa_en_len);
+
+	char *xa = NULL;
+	int xa_len = RSA_Decrypt(xa_en, privKeyName, &xa);
 
 	printf("DECRYPT:XA:%s\n", xa);
 	char keyFileName[512]={0};
@@ -790,7 +797,13 @@ int SendFileContentToServer(char *to, char *fileName, D_H dh)
 	printf("XA:%s\n", xa);
 	/*The encrypted xa which will be sent to server.*/
 	printf("Encrypt XA with key:%s;\n", pubFile);
-	char *xa_en = RSA_Encrypt(xa, pubFile);
+	char *xa_en = NULL;
+	int xa_en_len = RSA_Encrypt(xa, strlen(xa), pubFile, &xa_en);
+	
+	/*Encode the xa_en with base64, for network transfer*/
+	char *xa_en_base64 = NULL;
+	Base64Encode(xa_en, xa_en_len, &xa_en_base64);
+
 	char *sendingFileName = "encrypted";
 
 	char key[100]={0};
@@ -802,8 +815,12 @@ int SendFileContentToServer(char *to, char *fileName, D_H dh)
 		return -1;
 	}
 
-	char *fileStr = CreateFileSendingJSON(dh.sid, xa_en, basename(fileName));
+	char *fileStr = CreateFileSendingJSON(dh.sid, xa_en_base64, basename(fileName));
 	SSL_send(ssl_server_data->ssl, fileStr, strlen(fileStr));	
+
+	free(xa_en);
+	free(xa_en_base64);
+
 	bzero(buffer, 1024);
 	if(0>=SSL_recv(ssl_server_data->ssl, buffer, 1024))
 	{

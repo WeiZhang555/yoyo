@@ -25,53 +25,70 @@ void Get_RandStr(char s[],int num)
  	}
 }
 
-char *RSA_Encrypt(char *str,char *path_key){
-    char *p_en;
-    RSA *p_rsa;
-    FILE *file;
-    int flen,rsa_len;
-    if((file=fopen(path_key,"r"))==NULL){
+int RSA_Encrypt(const unsigned char* plain, int plainLen, char *path_key, unsigned char** dest)
+{
+    FILE *file=fopen(path_key,"r");
+    if(!file){
         perror("open key file error");
-        return NULL;    
-    }   
-    if((p_rsa=PEM_read_RSA_PUBKEY(file,NULL,NULL,NULL))==NULL){
-        ERR_print_errors_fp(stdout);
-        return NULL;
-    }   
-    flen=strlen(str);
-    rsa_len=RSA_size(p_rsa);
-    p_en=(unsigned char *)malloc(rsa_len+1);
-    memset(p_en,0,rsa_len+1);
-    if(RSA_public_encrypt(rsa_len,(unsigned char *)str,(unsigned char*)p_en,p_rsa,RSA_NO_PADDING)<0){
-        return NULL;
+        return -1;    
     }
+   
+	char err[512]={0};
+	RSA *p_rsa=PEM_read_RSA_PUBKEY(file,NULL,NULL,NULL);
+    if(p_rsa==NULL){
+		fclose(file);
+		ERR_load_crypto_strings();
+        ERR_error_string(ERR_get_error(), err);
+        return -1;
+    }   
+    //flen=strlen(str);
+    int rsa_len=RSA_size(p_rsa);
+    *dest = (unsigned char *)malloc(rsa_len+1);
+    memset(*dest,0,rsa_len+1);
+	int encLen=RSA_public_encrypt(plainLen, plain, *dest, p_rsa, RSA_PKCS1_PADDING);
+    if(encLen<0){
+		fclose(file);
+		ERR_load_crypto_strings();
+        ERR_error_string(ERR_get_error(), err);
+        return -1;
+    }
+
     RSA_free(p_rsa);
     fclose(file);
-    return p_en;
+    return encLen;
 }
 
-char *RSA_Decrypt(char *str,char *path_key){
-    char *p_de;
-    RSA *p_rsa;
-    FILE *file;
-    int rsa_len;
-    if((file=fopen(path_key,"r"))==NULL){
+int RSA_Decrypt(const unsigned char *cipher, char *path_key, unsigned char** dest)
+{
+    //char *p_de;
+    FILE *file=fopen(path_key,"r");
+    if(!file){
         perror("open key file error");
-        return NULL;
+        return -1;
     }
-    if((p_rsa=PEM_read_RSAPrivateKey(file,NULL,NULL,NULL))==NULL){
-        ERR_print_errors_fp(stdout);
-        return NULL;
+
+	char err[512]={0};
+	RSA *p_rsa=PEM_read_RSAPrivateKey(file,NULL,NULL,NULL);
+    if(p_rsa==NULL){
+		fclose(file);
+		ERR_load_crypto_strings();
+        ERR_error_string(ERR_get_error(), err);
+        return -1;
     }
-    rsa_len=RSA_size(p_rsa);
-    p_de=(unsigned char *)malloc(rsa_len+1);
-    memset(p_de,0,rsa_len+1);
-    if(RSA_private_decrypt(rsa_len,(unsigned char *)str,(unsigned char*)p_de,p_rsa,RSA_NO_PADDING)<0){
-        return NULL;
+
+    int rsa_len=RSA_size(p_rsa);
+	*dest = (unsigned char*)malloc(rsa_len+1);
+	bzero(*dest, rsa_len+1);
+	int decLen = RSA_private_decrypt(rsa_len, cipher, *dest, p_rsa, RSA_PKCS1_PADDING);
+	if(decLen<0){
+		fclose(file);
+		ERR_load_crypto_strings();
+        ERR_error_string(ERR_get_error(), err);
+        return -1;
     }
     RSA_free(p_rsa);
     fclose(file);
-    return p_de;
+    return decLen;
 }
 
 int PrepareKey(unsigned char k[], int keyLen, DES_key_schedule *ks)
