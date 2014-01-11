@@ -168,7 +168,8 @@ int HandleQueryPulse(SSL *ssl, int epollfd)
 int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 {
 	cJSON *child = attr->child;
-	char *to=NULL, *filename=NULL;
+	char *to=NULL,*from=NULL, *filename=NULL;
+
 	int q, a;
 	while(child)
 	{
@@ -189,7 +190,7 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 		child = child->next;
 	}
 
-	/*Just update the database silently.*/
+	/*Check whether the to user exists.*/
 	int status = DB_Check_User(to);
 	if(status < 0)
 	{
@@ -201,8 +202,16 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 		return -1;
 	}
 
+	/*Check if the user has logined in*/
+	const SESS_DATA *sess = Session_Find(epollfd);
+	if(sess==NULL)
+	{
+		HandleError(ssl, "Please login first!");
+		return -1;
+	}
+	from = sess->username;
 	
-
+	
 }
 
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)

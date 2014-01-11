@@ -38,7 +38,6 @@ void Disconnect_CM()
 	}
 }
 
-
 char *CreateNewAccountJSON(char *name, char *passwd, char *email)
 {
 	cJSON *newAccount = cJSON_CreateObject();

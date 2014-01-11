@@ -14,4 +14,6 @@ typedef struct File_Request{
 	struct File_Request *next;	/*The list pointer, points to next*/
 }FILE_REQUEST;
 
+FILE_REQUEST *file_request_list = NULL;
+
 #endif
