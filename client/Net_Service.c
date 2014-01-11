@@ -158,9 +158,25 @@ int ParseRegisterStep2Resp(char *buffer)
 /*Login process*/
 int Login()
 {
+	/*First to check whether we get the username and password or not*/
 	if(strlen(name)==0 || strlen(passwd)==0)
-		GetUserInput();
+	{
+		GetUserName();
+		GetUserPassword();
+	}
+	/*Second must check if we have the certificates*/
+	char certFile[1024]={0};
+	strncpy(certFile, name, 1000);
+	strcat(certFile, "Cert.pem");
+	FILE *f = fopen(certFile, "r");
+	if(!f)
+	{
+		printf("You have't got the certificate yet!\n");
+		return -1;
+	}
+	fclose(f);
 
+	/*Start the login process*/
 	cJSON *loginJson = cJSON_CreateObject();
 	cJSON_AddStringToObject(loginJson, "cmd", "login");
 	cJSON *attr = cJSON_CreateObject();
@@ -304,11 +320,9 @@ int RegisterAccount(char *name, char *passwd, char *email)
 	}
 }
 
-int GetUserInput()
+int GetUserName()
 {
 	bzero(name, 256);
-	bzero(passwd, 256);
-	bzero(email, 256);
 	printf("UserName:");
 	fgets(name, 256, stdin);
 	if(Sanitize(name)<=0)
@@ -316,6 +330,12 @@ int GetUserInput()
 		printf("UserName can not be empty. Exit.\n");
 		return -1;
 	}
+	return 0;
+}
+
+int GetUserPassword()
+{
+	bzero(passwd, 256);
 	printf("Password:");
 	fgets(passwd, 256, stdin);
 	if(Sanitize(passwd)<=0)
@@ -323,7 +343,12 @@ int GetUserInput()
 		printf("Password can not be empty. Exit.\n");
 		return -1;
 	}
+	return 0;
+}
 
+int GetUserEmail()
+{
+	bzero(email, 256);
 	printf("Email:");
 	fgets(email, 256, stdin);
 	if(Sanitize(email)<=0)
@@ -331,15 +356,13 @@ int GetUserInput()
 		printf("Email can not be empty. Exit.\n");
 		return -1;
 	}
-
-	printf("User name:%s; Password:%s; email:%s;\n", name, passwd, email);
 	return 0;
 }
 
 /*To register a new user*/
 void Register()
 {
-	if(0>GetUserInput())
+	if(0>GetUserName() || 0>GetUserPassword() || 0>GetUserEmail())
 	{
 		printf("Get account information failed. Please check!\n");
 	}
@@ -411,14 +434,21 @@ int Client_Service_Start(char *ip, int servport)
 
 		if(0==strcmp("reg", cmd))
 		{
-			
 			Register();
+		}else if(0==strcmp("login", cmd)){
+			Login();
+		}else if(0==strcmp("clear", cmd)){
+			bzero(name, 256);
+			bzero(passwd, 256);
+			bzero(email, 256);
 		}else if(0==strcmp("quit", cmd)){
 			printf("Client quit, bye.\n");
 			return 0;
 		}else{
 			printf("\nCommands usable:\n\n");
 			printf(" -reg: register a new user.\n");
+			printf(" -login: login the user.\n");
+			printf(" -clear: clear the stored user information.\n");
 			printf(" -quit: quitting the client.\n\n");
 			printf("\n");
 		}
