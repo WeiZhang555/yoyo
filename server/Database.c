@@ -173,8 +173,6 @@ int DB_Login(char *username, char *password)
 		return -2;
 	}
 
-	mysql_free_result(result);
-	
 	/*Generate the SHA hash string as the new password
 	 with password user provides and the salt in database.*/
 	char newpass[1024] = {0};
@@ -189,12 +187,21 @@ int DB_Login(char *username, char *password)
 	Base64Encode(digest, SHA_DIGEST_LENGTH, &base64Digest);
 	
 	/*check if the generated base64digest meet with the database*/
+	printf("Base64digest:%s\n", base64Digest);
+	printf("Row[0]:%s\n", row[0]);
 	if(0!=strcmp(base64Digest, row[0]))	/*password not meet*/
+	{
+		mysql_free_result(result);
 		return -3;
+	}
 
 	if(row[2]==0)
+	{
+		mysql_free_result(result);
 		return -4;
+	}
 
+	mysql_free_result(result);
 	return 0;
 		
 }
