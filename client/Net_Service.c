@@ -144,11 +144,16 @@ int ParseRegisterStep2Resp(char *buffer)
 	{
 		if(attr->child)
 			printf("Error:%s\n", attr->child->valuestring);
+		
+		cJSON_Delete(root);
 		return -1;
 	}else if(0==strcmp(cmd->valuestring, "sending_cert_next"))
 	{
-		ReceiveCertFromCM(attr);
-		UpdateStatusAndLogin();
+		if(-1==ReceiveCertFromCM(attr))
+		{
+			cJSON_Delete(root);
+			return -1;
+		}
 	}
 	cJSON_Delete(root);
 	return 0;
@@ -202,6 +207,8 @@ int Login()
 	if(recvLen<=0)
 	{
 		printf("Unknown error from server.\n");
+		SSL_Connect_Close(ssl_server_data);
+		ssl_server_data = NULL;
 		return -1;
 	}
 
@@ -231,7 +238,7 @@ int UpdateStatusAndLogin()
 	SSL_send(ssl_server_data->ssl, certStr, strlen(certStr));
 	free(certStr);
 
-	Login();
+	return Login();
 }
 
 /*Registration step 1: log the user information into the server database*/
@@ -253,6 +260,8 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 	if(recvLen<=0)
 	{
 		printf("Unknown error from server.\n");
+		SSL_Connect_Close(ssl_server_data);
+		ssl_server_data = NULL;
 		return -1;
 	}
 
@@ -283,13 +292,15 @@ int GetCertFromCM(char *name, char *email)
 	if(recvLen<=0)
 	{
 		printf("Unknown error from server.\n");
+		SSL_Connect_Close(ssl_cm_data);
+		ssl_cm_data = NULL;
 		return -1;
 	}
 
 	printf("From CM:%s\n", buffer);
-	ParseRegisterStep2Resp(buffer);
+	int ret = ParseRegisterStep2Resp(buffer);
 	free(certStr);
-	return 0;
+	return ret;
 
 }
 
@@ -305,19 +316,18 @@ int RegisterAccount(char *name, char *passwd, char *email)
 		return -1;
 	}
 	/*Step 2: get the private cert of the client from certManager.*/
- 	GetCertFromCM(name, email);
+ 	if(-1==GetCertFromCM(name, email))
+	{
+		printf("Receiving certificates from cm failed.\n");
+		return -1;
+	}
 	/*Step 3: tell the server that the cert has been prepared well*/
-
-	if(ssl_server_data!=NULL)
+	if(-1==UpdateStatusAndLogin())
 	{
-		SSL_Connect_Close(ssl_server_data);
-		ssl_server_data = NULL;
+		printf("Login failed!\n");
+		return -1;
 	}
-	if(ssl_cm_data!=NULL)
-	{
-		SSL_Connect_Close(ssl_cm_data);
-		ssl_cm_data = NULL;
-	}
+	
 }
 
 int GetUserName()
@@ -454,5 +464,15 @@ int Client_Service_Start(char *ip, int servport)
 		}
 	}
 	
+	if(ssl_server_data!=NULL)
+	{
+		SSL_Connect_Close(ssl_server_data);
+		ssl_server_data = NULL;
+	}
+	if(ssl_cm_data!=NULL)
+	{
+		SSL_Connect_Close(ssl_cm_data);
+		ssl_cm_data = NULL;
+	}
 	return 0;
 }

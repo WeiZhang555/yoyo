@@ -75,7 +75,6 @@ void HandleRegister(SSL *ssl, cJSON *attr)
 		}
 	}
 	
-	printf("Response:\n%s\n", resp);	
 	SSL_send(ssl, resp, strlen(resp));
 	free(resp);
 	return;
@@ -106,7 +105,7 @@ int HandleCertStatusUpdate(SSL *ssl, cJSON *attr)
 	return 0;
 }
 
-int HandleLogin(SSL *ssl, cJSON *attr)
+int HandleLogin(SSL *ssl,int epollfd, cJSON *attr)
 {
 	if(!ssl || !attr)	return -1;
 	char *username=NULL, *password=NULL;
@@ -144,6 +143,10 @@ int HandleLogin(SSL *ssl, cJSON *attr)
     		respStr = cJSON_Print(respJson);
     		cJSON_Delete(respJson);
 			SSL_send(ssl, respStr, strlen(respStr));
+			/*Add the session into the list*/
+			Session_Add(epollfd, username);
+			/*Print all the session data for debug purpose*/
+			Session_Print_All();
 			free(respStr);
 			break;
 		default:
@@ -168,6 +171,8 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	{
 		printf("client quit!\n");
 		SSL_Client_Leave(ssl_data, epollfd);
+		Session_Delete(epollfd);
+		Session_Print_All();
 		return;
 	}
 	printf("client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);
@@ -202,7 +207,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 		HandleCertStatusUpdate(ssl, attr);
 	}else if(0==strcmp(cmd->valuestring, "login"))
 	{
-		HandleLogin(ssl, attr);
+		HandleLogin(ssl,epollfd,attr);
 	}
 
 	cJSON_Delete(root);

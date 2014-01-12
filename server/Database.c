@@ -82,7 +82,6 @@ int DB_Insert_User(char *username, char *password, char *email)
 	strcat(newpass, salt);
 	unsigned char digest[SHA_DIGEST_LENGTH];
 
-	printf("SHA length:%d\n", SHA_DIGEST_LENGTH);
 	/*Get the SHA1 digest with salt */    
     SHA1(newpass, strlen(newpass), (unsigned char*)&digest);    
 	/*Get the base64 string of the digest, for convenience of database store.*/
@@ -171,7 +170,6 @@ int DB_Login(char *username, char *password)
 	row = mysql_fetch_row(result);
 
 	mysql_free_result(result);
-	printf("pass:%s; salt:%s; cert_status:%s;\n", row[0],row[1], row[2]);
 	
 	/*Generate the SHA hash string as the new password
 	 with password user provides and the salt in database.*/

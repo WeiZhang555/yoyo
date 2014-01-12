@@ -181,6 +181,7 @@ SSL_CLIENT_DATA *SSL_Connect_To(char *ip, int servport)
 	return ssl_data;
 }
 
+/*This function mainly provides service for client*/
 void SSL_Connect_Close(SSL_CLIENT_DATA *ssl_data)
 {
 	/*close ssl connection*/
@@ -300,6 +301,7 @@ int SSL_Listening_Loop(int port, int maxEvents, char *cert, void(*clientHandler)
     SSL_CTX_DeInit(ctx);
 }
 
+/*This function provides service for server and cm*/
 void SSL_Client_Leave(SSL_CLIENT_DATA *ssl_data, int epollfd)
 {
 	/*close ssl connection*/

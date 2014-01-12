@@ -1,4 +1,4 @@
-MAIN_OBJECTS=Main.o Net_Service.o Database.o ../lib/SSL_Wrapper.o ../lib/cJSON/cJSON.o ../lib/Security.o ../lib/Base64.o
+MAIN_OBJECTS=Main.o Net_Service.o Database.o ../lib/SSL_Wrapper.o ../lib/cJSON/cJSON.o ../lib/Security.o ../lib/Base64.o Session.o
 MYSQL_FLAG=`mysql_config --cflags --libs`
 
 main:	$(MAIN_OBJECTS)		
