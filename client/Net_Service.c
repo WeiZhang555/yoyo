@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <sys/time.h>
 #include <signal.h>
 
 #include "util.h"
@@ -16,6 +17,26 @@
 SSL_CLIENT_DATA *ssl_server_data = NULL;
 SSL_CLIENT_DATA *ssl_cm_data = NULL;
 char name[256]={0}, passwd[256]={0}, email[256]={0};
+
+void Disconnect_Server()
+{
+	if(ssl_server_data!=NULL)
+	{
+		SSL_Connect_Close(ssl_server_data);
+		ssl_server_data = NULL;
+		setitimer(ITIMER_REAL, NULL, NULL);
+	}
+}
+
+void Disconnect_CM()
+{
+	if(ssl_cm_data!=NULL)
+	{
+		SSL_Connect_Close(ssl_cm_data);
+		ssl_cm_data = NULL;
+	}
+}
+
 
 char *CreateNewAccountJSON(char *name, char *passwd, char *email)
 {
@@ -159,6 +180,49 @@ int ParseRegisterStep2Resp(char *buffer)
 	return 0;
 }
 
+/**
+ *Parse the login response json from server.
+ *return: -1 if login failed. 0 if login succeed.
+ */
+int ParseLoginResponse(char *buffer)
+{
+	if(!buffer)
+		return -1;
+	cJSON *root=NULL, *child=NULL, *cmd=NULL, *attr = NULL;
+	root = cJSON_Parse(buffer);
+	if(!root)
+		return -1;
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(!cmd)	return -1;
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		if(attr->child)
+			printf("Error:%s\n", attr->child->valuestring);
+		
+		cJSON_Delete(root);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "success"))
+	{
+		cJSON_Delete(root);
+		return 0;
+	}
+}
+
+/*The heartbeat pulse*/
+void Heartbeat(int sig)
+{
+	printf("Heartbeat!\n");
+	fflush(NULL);
+}
 
 /*Login process*/
 int Login()
@@ -207,12 +271,22 @@ int Login()
 	if(recvLen<=0)
 	{
 		printf("Unknown error from server.\n");
-		SSL_Connect_Close(ssl_server_data);
-		ssl_server_data = NULL;
+		Disconnect_Server();
 		return -1;
 	}
 
 	printf("From Server:\n%s\n", buffer);
+	if(0==ParseLoginResponse(buffer))
+	{
+		printf("Login successfully!\n");
+		/*Set the timer to generate heartbeat pulse to the server periodly*/
+		struct itimerval value;
+		value.it_value.tv_sec = PULSE_INTERVAL;
+		value.it_value.tv_usec = 0;
+		value.it_interval = value.it_value;
+		setitimer(ITIMER_REAL, &value, NULL);
+		signal(SIGALRM, Heartbeat);
+	}
 	return 0;
 }
 
@@ -260,8 +334,7 @@ int RegisterIntoServer(char *name, char *passwd, char *email)
 	if(recvLen<=0)
 	{
 		printf("Unknown error from server.\n");
-		SSL_Connect_Close(ssl_server_data);
-		ssl_server_data = NULL;
+		Disconnect_Server();
 		return -1;
 	}
 
@@ -292,8 +365,7 @@ int GetCertFromCM(char *name, char *email)
 	if(recvLen<=0)
 	{
 		printf("Unknown error from server.\n");
-		SSL_Connect_Close(ssl_cm_data);
-		ssl_cm_data = NULL;
+		Disconnect_CM();
 		return -1;
 	}
 
@@ -460,19 +532,10 @@ int Client_Service_Start(char *ip, int servport)
 			printf(" -login: login the user.\n");
 			printf(" -clear: clear the stored user information.\n");
 			printf(" -quit: quitting the client.\n\n");
-			printf("\n");
 		}
 	}
 	
-	if(ssl_server_data!=NULL)
-	{
-		SSL_Connect_Close(ssl_server_data);
-		ssl_server_data = NULL;
-	}
-	if(ssl_cm_data!=NULL)
-	{
-		SSL_Connect_Close(ssl_cm_data);
-		ssl_cm_data = NULL;
-	}
+	Disconnect_Server();
+	Disconnect_CM();
 	return 0;
 }
