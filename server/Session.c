@@ -1,12 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct Session_data{
-	int sid;			/*Session id, we set the sid=epollId in this scenario*/
-	char username[256];	/*this ssession's client user name*/
-	struct Session_data *next;
-}SESS_DATA;
+#include "Session.h"
 
 SESS_DATA *sess_list = NULL;
 
@@ -67,4 +62,16 @@ int Session_Print_All()
 		printf("{ sid:%d; username:%s; }\n", iter->sid, iter->username);
 		iter = iter->next;
 	}
+}
+
+const SESS_DATA *Session_Find(int sid)
+{
+	SESS_DATA *iter = sess_list;
+	while(iter)
+	{
+		if(iter->sid==sid)
+			break;
+		iter = iter->next;
+	}
+	return iter;
 }

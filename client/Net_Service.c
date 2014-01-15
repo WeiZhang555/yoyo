@@ -221,10 +221,11 @@ int ParseLoginResponse(char *buffer)
 void Heartbeat(int sig)
 {
 	printf("Heartbeat!\n");
-	cJSON *pulseJson = cJSON_CreateObject();
+	char *pulseStr = "{\n\"cmd\":  \"query_pulse\"\n}";
+	/*cJSON *pulseJson = cJSON_CreateObject();
 	cJSON_AddStringToObject(pulseJson, "cmd", "query_pulse");
 	char *pulseStr = cJSON_Print(pulseJson);
-	cJSON_Delete(pulseJson);
+	cJSON_Delete(pulseJson);*/
 	if(!ssl_server_data)
 	{
 		setitimer(ITIMER_REAL, NULL, NULL);
@@ -234,10 +235,10 @@ void Heartbeat(int sig)
 	{
 		setitimer(ITIMER_REAL, NULL, NULL);
 		Disconnect_Server();
-		free(pulseStr);
+		//free(pulseStr);
 		return;
 	}
-	free(pulseStr);
+	//free(pulseStr);
 	fflush(NULL);
 }
 
@@ -575,6 +576,7 @@ int Client_Service_Start(char *ip, int servport)
 			printf(" -reg: register a new user.\n");
 			printf(" -login: login the user.\n");
 			printf(" -clear: clear the stored user information.\n");
+			printf(" -send [someone] [filepath]: send file to someone\n");
 			printf(" -quit: quitting the client.\n\n");
 		}
 	}

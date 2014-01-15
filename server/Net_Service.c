@@ -11,6 +11,7 @@
 #include "../lib/cJSON/cJSON.h"
 #include "Util.h"
 #include "Database.h"
+#include "Session.h"
 
 #define BUFF_LEN 2048
 
@@ -155,6 +156,15 @@ int HandleLogin(SSL *ssl,int epollfd, cJSON *attr)
 	return 0;
 }
 
+int HandleQueryPulse(SSL *ssl, int epollfd)
+{
+	const SESS_DATA *sess = Session_Find(epollfd);
+	if(sess)
+	{
+		printf("Heartbeat:%s\n", sess->username);
+	}
+}
+
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
@@ -208,6 +218,9 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}else if(0==strcmp(cmd->valuestring, "login"))
 	{
 		HandleLogin(ssl,epollfd,attr);
+	}else if(0==strcmp(cmd->valuestring, "query_pulse"))
+	{
+		HandleQueryPulse(ssl, epollfd);
 	}
 
 	cJSON_Delete(root);
