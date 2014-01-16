@@ -11,6 +11,7 @@
 #include <signal.h>
 
 #include "util.h"
+#include "Security.h"
 #include "../lib/SSL_Wrapper.h"
 #include "../lib/cJSON/cJSON.h"
 
@@ -488,6 +489,87 @@ void Register()
 	RegisterAccount(name, passwd, email);
 }
 
+char *Compose_File_Query(char *to, char *filename, D_H *dh)
+{
+	cJSON *fileQuery = cJSON_CreateObject();
+	cJSON_AddStringToObject(fileQuery, "cmd", "file_query");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(fileQuery, "attr", attr);
+	cJSON_AddStringToObject(attr, "to", to);
+	cJSON_AddStringToObject(attr, "filename", filename);
+	cJSON_AddNumberToObject(attr, "q", dh->q);
+	cJSON_AddNumberToObject(attr, "a", dh->a);
+	char *fileStr = cJSON_Print(fileQuery);
+	cJSON_Delete(fileQuery);
+	return fileStr;
+}
+
+int Send_File()
+{
+	if(!ssl_server_data)
+	{
+		printf("Please login first!\n");
+		return -1;
+	}
+	SSL *ssl = ssl_server_data->ssl;
+	char userName[256], fileName[1024];
+	int unameLen, fnameLen;
+	printf("Who do you want to send?");
+	fgets(userName, 256, stdin);
+	unameLen = strlen(userName);
+	if(userName[unameLen-1]=='\n')
+		userName[--unameLen]='\0';
+	if(unameLen<=0)
+	{
+		printf("Username can not be empty.\n\n");
+		return -1;
+	}
+
+	printf("File path?");
+	fgets(fileName, 1024, stdin);
+	fnameLen = strlen(fileName);
+	if(fileName[fnameLen-1]=='\n')
+		fileName[--fnameLen]='\0';
+	if(fnameLen<=0)
+	{
+		printf("File path can not be empty.\n\n");
+		return -1;
+	}
+
+	FILE *f=NULL;
+	if(NULL==(f=fopen(fileName, "r")) )
+	{
+		printf("File not exists!\n\n");
+		return -1;
+	}
+	fclose(f);
+	printf("You are sending [%s] to [%s]\n\n", fileName, userName);
+
+	/*Step 1:Generate the diffie-hellman struct*/
+	D_H dh;
+	if(-1==PickDH(&dh))
+	{
+		printf("Calculate Diffie-Hellman struct failed!\n\n");
+		return -1;
+	}
+
+	/*Compose the file sending request*/
+	char *fileStr = Compose_File_Query(userName, fileName, &dh);
+	SSL_send(ssl, fileStr, strlen(fileStr));
+	free(fileStr);
+
+	char buffer[1024]={0};
+	if(0>=SSL_recv(ssl, buffer,1023))
+	{
+		Disconnect_Server();
+		printf("Server down!\n");
+		return -1;
+	}
+
+	printf("%s\n", buffer);
+	return 0;
+}
+
 /*Sanitize the user input, delete all the blank in the front and end*/
 int Sanitize(char input[])
 {
@@ -571,12 +653,14 @@ int Client_Service_Start(char *ip, int servport)
 		}else if(0==strcmp("quit", cmd)){
 			printf("Client quit, bye.\n");
 			return 0;
+		}else if(0==strcmp("send", cmd)){
+			Send_File();
 		}else{
 			printf("\nCommands usable:\n\n");
 			printf(" -reg: register a new user.\n");
 			printf(" -login: login the user.\n");
 			printf(" -clear: clear the stored user information.\n");
-			printf(" -send [someone] [filepath]: send file to someone\n");
+			printf(" -send: send file to someone\n");
 			printf(" -quit: quitting the client.\n\n");
 		}
 	}

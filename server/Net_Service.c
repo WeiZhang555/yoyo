@@ -165,6 +165,46 @@ int HandleQueryPulse(SSL *ssl, int epollfd)
 	}
 }
 
+int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
+{
+	cJSON *child = attr->child;
+	char *to=NULL, *filename=NULL;
+	int q, a;
+	while(child)
+	{
+		if(strcmp(child->string, "to")==0)
+		{
+			to = child->valuestring;
+		}else if(strcmp(child->string, "q"))
+		{
+			q = child->valueint;
+		}else if(strcmp(child->string, "a"))
+		{
+			a = child->valueint;
+		}else if(strcmp(child->string, "filename")==0)
+		{
+			filename = child->valuestring;
+		}
+		
+		child = child->next;
+	}
+
+	/*Just update the database silently.*/
+	int status = DB_Check_User(to);
+	if(status < 0)
+	{
+		HandleError(ssl, "Unknown error from server database.");
+		return -1;
+	}else if(status==0)
+	{
+		HandleError(ssl, "User not exists!");
+		return -1;
+	}
+
+	
+
+}
+
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
@@ -221,6 +261,9 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}else if(0==strcmp(cmd->valuestring, "query_pulse"))
 	{
 		HandleQueryPulse(ssl, epollfd);
+	}else if(0==strcmp(cmd->valuestring, "file_query"))
+	{
+		HandleFileQuery(ssl, epollfd, attr);
 	}
 
 	cJSON_Delete(root);

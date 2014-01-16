@@ -66,7 +66,7 @@ int Session_Print_All()
 
 const SESS_DATA *Session_Find(int sid)
 {
-	SESS_DATA *iter = sess_list;
+	const SESS_DATA *iter = sess_list;
 	while(iter)
 	{
 		if(iter->sid==sid)
