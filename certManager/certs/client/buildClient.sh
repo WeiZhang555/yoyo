@@ -9,11 +9,13 @@ fi
 commonName=$1;
 email=$2;
 privFile="${commonName}Priv.pem";
+pubFile="${commonName}Pub.pem";
 csrFile="${commonName}Cert.csr";
 certFile="${commonName}Cert.pem";
 echo $privFile $csrFile $certFile;
 
 openssl genrsa -out $privFile 2048
+openssl rsa -inform pem -in ${privFile} -pubout -out ${pubFile}
 openssl req -new -key $privFile -out $csrFile -subj /C=CN/ST=BJ/L=BJ/O=Cookie/OU=Cookie/CN=${commonName}/emailAddress=${email}
 
 cd ..

@@ -9,15 +9,19 @@
 #include <openssl/err.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <libgen.h>
 
 #include "util.h"
 #include "Security.h"
+#include "Json.h"
 #include "../lib/SSL_Wrapper.h"
 #include "../lib/cJSON/cJSON.h"
 
 SSL_CLIENT_DATA *ssl_server_data = NULL;
 SSL_CLIENT_DATA *ssl_cm_data = NULL;
 char name[256]={0}, passwd[256]={0}, email[256]={0};
+
+extern char *CreateLoginJSON(char *name, char *passwd);
 
 void Disconnect_Server()
 {
@@ -36,33 +40,6 @@ void Disconnect_CM()
 		SSL_Connect_Close(ssl_cm_data);
 		ssl_cm_data = NULL;
 	}
-}
-
-char *CreateNewAccountJSON(char *name, char *passwd, char *email)
-{
-	cJSON *newAccount = cJSON_CreateObject();
-	cJSON_AddStringToObject(newAccount, "cmd", "register");
-	cJSON *attr = cJSON_CreateObject();
-	cJSON_AddItemToObject(newAccount, "attr", attr);
-	cJSON_AddStringToObject(attr, "username", name);
-	cJSON_AddStringToObject(attr, "password", passwd);
-	cJSON_AddStringToObject(attr, "email", email);
-	char *accountStr = cJSON_Print(newAccount);
-	cJSON_Delete(newAccount);
-	return accountStr;
-}
-
-char *CreateCMJSON(char *name, char *email)
-{
-	cJSON *cert = cJSON_CreateObject();
-	cJSON_AddStringToObject(cert, "cmd", "get_cert");
-	cJSON *attr = cJSON_CreateObject();
-	cJSON_AddItemToObject(cert, "attr", attr);
-	cJSON_AddStringToObject(attr, "username", name);
-	cJSON_AddStringToObject(attr, "email", email);
-	char *CMStr = cJSON_Print(cert);
-	cJSON_Delete(cert);
-	return CMStr;
 }
 
 /*Return 0 for true, -1 for error*/
@@ -264,21 +241,21 @@ int Login()
 	fclose(f);
 
 	/*Start the login process*/
-	cJSON *loginJson = cJSON_CreateObject();
-	cJSON_AddStringToObject(loginJson, "cmd", "login");
-	cJSON *attr = cJSON_CreateObject();
-	cJSON_AddItemToObject(loginJson, "attr", attr);
-	cJSON_AddStringToObject(attr, "username", name);
-	cJSON_AddStringToObject(attr, "password", passwd);
-	char *loginStr = cJSON_Print(loginJson);
-	cJSON_Delete(loginJson);
-	
+	char *loginStr = CreateLoginJSON(name, passwd);
 	if(!ssl_server_data)
 		ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
 	if(!ssl_server_data)	
 	{
 		free(loginStr);
 		printf("Connect to server failed!\n");
+		return -1;
+	}
+	if(!ssl_cm_data)
+		ssl_cm_data = SSL_Connect_To(CM_IP, CM_PORT);
+	if(!ssl_cm_data)	
+	{
+		free(loginStr);
+		printf("Connect to cm failed!\n");
 		return -1;
 	}
 
@@ -318,13 +295,7 @@ int Login()
 /*Step 3: Update the cert status to ok(certificate prepared) and login */
 int UpdateStatusAndLogin()
 {
-	cJSON *upCert = cJSON_CreateObject();
-	cJSON_AddStringToObject(upCert, "cmd", "cert_status_ok");
-	cJSON *attr = cJSON_CreateObject();
-	cJSON_AddItemToObject(upCert, "attr", attr);
-	cJSON_AddStringToObject(attr, "username", name);
-	char *certStr = cJSON_Print(upCert);
-	cJSON_Delete(upCert);
+	char *certStr = CreateStatusUpdateJSON(name);
 
 	if(!ssl_server_data)
 		ssl_server_data = SSL_Connect_To(SERVER_IP, SERVER_PORT);
@@ -488,22 +459,197 @@ void Register()
 	RegisterAccount(name, passwd, email);
 }
 
-char *Compose_File_Query(char *to, char *filename, D_H *dh)
+
+int ParseFileResponse(cJSON *attr, D_H *dh)
 {
-	cJSON *fileQuery = cJSON_CreateObject();
-	cJSON_AddStringToObject(fileQuery, "cmd", "file_query");
-	cJSON *attr = cJSON_CreateObject();
-	cJSON_AddItemToObject(fileQuery, "attr", attr);
-	cJSON_AddStringToObject(attr, "to", to);
-	cJSON_AddStringToObject(attr, "filename", filename);
-	cJSON_AddNumberToObject(attr, "q", dh->q);
-	cJSON_AddNumberToObject(attr, "a", dh->a);
-	char *fileStr = cJSON_Print(fileQuery);
-	cJSON_Delete(fileQuery);
-	return fileStr;
+	if(!attr || !dh)
+		return -1;
+	int sid=-1, y=-1;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "sid"))
+		{
+			sid = child->valueint;
+		}else if(0==strcmp(child->string, "y"))
+		{
+			y = child->valueint;
+		}
+		child = child->next;
+	}
+	
+	if(sid==-1 || y==-1)
+		return -1;
+	dh->sid = sid;
+	dh->yb = y;
+	dh->K = ComputeY(dh->q, dh->yb, dh->x);
+	return 0;
 }
 
-int Send_File()
+/*Tell the server "I want to send a file to someone"
+ *return: sid if success, -1 if failed.
+ */
+int SendFileRequestToServer(char *userName, char *fileName, D_H *dh)
+{
+	/*Compose the file sending request*/
+	if(!ssl_server_data)	
+		return -1;
+	SSL *ssl = ssl_server_data->ssl;
+	char *fileStr = CreateFileQueryJSON(userName, fileName, dh);
+	SSL_send(ssl, fileStr, strlen(fileStr));
+	free(fileStr);
+
+	char buffer[1024]={0};
+	if(0>=SSL_recv(ssl, buffer,1023))
+	{
+		Disconnect_Server();
+		printf("Server down!\n");
+		return -1;
+	}
+
+	printf("%s\n", buffer);
+	int sid;
+	cJSON *root=NULL, *child=NULL, *cmd=NULL, *attr = NULL;
+	root = cJSON_Parse(buffer);
+	if(!root)
+		return -1;
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(!cmd)	return -1;
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		if(attr->child)
+			printf("Error:%s\n", attr->child->valuestring);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "file_response"))
+	{
+		if(-1==ParseFileResponse(attr, dh))
+		{
+			return -1;
+		}
+	}
+	cJSON_Delete(root);
+
+	return 0;
+}
+
+int ReceivePubkeyFromCM(cJSON *attr)
+{
+	if(!attr)
+		return -1;
+	char *certFile=NULL, pubFile[512];
+	strcpy(pubFile, "pubs/");
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "filename"))
+		{
+			certFile = child->valuestring;
+		}
+		child = child->next;
+	}
+
+	printf("Public key file name:%s\n", certFile);
+	if(!certFile)	return -1;
+	
+	strcat(pubFile, certFile);
+	FILE *f = fopen(pubFile, "w");
+	if(!f)
+		printf("Certificate file [%s] can not open!\n", pubFile);
+	char buffer[512];
+	int len = 0;
+	while(1)
+	{
+		len = SSL_recv(ssl_cm_data->ssl,buffer, 511);
+		if(len <=0)
+			break;
+		buffer[len] = '\0';
+		if(0==strcmp("!@done*#",buffer ))
+			break;
+		else
+		{
+			if(f)
+				fwrite(buffer, sizeof(char), len, f);
+		}
+	}
+
+	if(!f)
+		return -1;
+	
+	fclose(f);
+	return 0;
+}
+
+int ParsePubkeyResponse(char *buffer)
+{
+	if(!buffer)
+		return -1;
+	cJSON *root=NULL, *child=NULL, *cmd=NULL, *attr = NULL;
+	root = cJSON_Parse(buffer);
+	if(!root)
+		return -1;
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(!cmd)	return -1;
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		if(attr->child)
+			printf("Error:%s\n", attr->child->valuestring);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "sending_pubkey_next"))
+	{
+		if(-1==ReceivePubkeyFromCM(attr))
+		{
+			printf("Receive public key from cm failed.\n");
+			return -1;
+		}
+	}
+	cJSON_Delete(root);
+	return 0;
+}
+
+int GetFriendPubKey(char *username)
+{
+	if(!ssl_cm_data)
+		return -1;
+	char buffer[1024];
+	SSL *ssl = ssl_cm_data->ssl;
+	if(!ssl)	return -1;
+
+	char *pubStr = CreatePubRequestJson(username);
+	SSL_send(ssl, pubStr, strlen(pubStr));
+	free(pubStr);
+	bzero(buffer ,1024);	
+	int len = SSL_recv(ssl, buffer, 1023 );
+	if(len<=0)
+	{
+		printf("Cert Manager unreachable.\n");
+		return -1;
+	}
+
+	int status = ParsePubkeyResponse(buffer);
+	if(status<0)
+		return -1;
+	return 0;
+}
+
+int SendFile()
 {
 	if(!ssl_server_data)
 	{
@@ -513,7 +659,7 @@ int Send_File()
 	SSL *ssl = ssl_server_data->ssl;
 	char userName[256], fileName[1024];
 	int unameLen, fnameLen;
-	printf("Who do you want to send?");
+	printf("Who do you want to send: ");
 	fgets(userName, 256, stdin);
 	unameLen = strlen(userName);
 	if(userName[unameLen-1]=='\n')
@@ -524,7 +670,7 @@ int Send_File()
 		return -1;
 	}
 
-	printf("File path?");
+	printf("File path: ");
 	fgets(fileName, 1024, stdin);
 	fnameLen = strlen(fileName);
 	if(fileName[fnameLen-1]=='\n')
@@ -552,20 +698,18 @@ int Send_File()
 		return -1;
 	}
 
-	/*Compose the file sending request*/
-	char *fileStr = Compose_File_Query(userName, fileName, &dh);
-	SSL_send(ssl, fileStr, strlen(fileStr));
-	free(fileStr);
-
-	char buffer[1024]={0};
-	if(0>=SSL_recv(ssl, buffer,1023))
+	/*Step 1: tell the server to prepare for file encryption next*/
+	if(-1==SendFileRequestToServer(userName, basename(fileName), &dh))
 	{
-		Disconnect_Server();
-		printf("Server down!\n");
+		printf("File sending failed.\n");
 		return -1;
 	}
 
-	printf("%s\n", buffer);
+	/*File sending request accepted by server. Now we need to get the friend user's pub key*/
+	if(-1==GetFriendPubKey(userName))
+	{
+		printf("Get certificate from server failed.");
+	}
 	return 0;
 }
 
@@ -653,7 +797,7 @@ int Client_Service_Start(char *ip, int servport)
 			printf("Client quit, bye.\n");
 			return 0;
 		}else if(0==strcmp("send", cmd)){
-			Send_File();
+			SendFile();
 		}else{
 			printf("\nCommands usable:\n\n");
 			printf(" -reg: register a new user.\n");

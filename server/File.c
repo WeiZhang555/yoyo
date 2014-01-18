@@ -5,25 +5,27 @@
 
 #include "File.h"
 
+FILE_REQUEST *file_request_list = NULL;
+
 int GetRandom(int max)
 {
 	srand(time(NULL));
 	return rand()%max;
 }
 
-int File_Request_Add(char *from, char *to, char *filename, int q, int a)
+FILE_REQUEST *File_Request_Add(char *from, char *to, char *filename, int q, int a)
 {
 	if(!from || !to || !filename)
-		return -1;
+		return NULL;
 	const int max = (1<<30);
 	FILE_REQUEST *fr = (FILE_REQUEST*)malloc(sizeof(FILE_REQUEST));
-	if(!fr)	return -1;
+	if(!fr)	return NULL;
 	bzero(fr->from, 256);
 	bzero(fr->to, 256);
-	bzero(fr->filename, 512);
+	bzero(fr->fileName, 512);
 	strncpy(fr->from, from, 255);
 	strncpy(fr->to, to, 255);
-	strncpy(fr->filename, filename, 255);
+	strncpy(fr->fileName, filename, 255);
 	fr->q = q;
 	fr->a = a;
 	fr->next = NULL;
@@ -40,20 +42,20 @@ int File_Request_Add(char *from, char *to, char *filename, int q, int a)
 		fr->sid = (iter->sid+1)%max;
 	}
 	fr->x = GetRandom(10);
-	fr->yb = ;
-	return 0;
+	fr->y = ComputeY(q, a, fr->x);
+	return fr;
 }
 
-int Session_Delete(int sid)
+int File_Request_Delete(int sid)
 {
-	SESS_DATA *temp = sess_list, *next;
-	if(!sess_list)	return -1;
+	FILE_REQUEST *temp = file_request_list, *next=NULL;
+	if(!file_request_list)	return -1;
 
-	if(sess_list->sid==sid)
+	if(file_request_list->sid==sid)
 	{
-		temp = sess_list->next;
-		free(sess_list);
-		sess_list = temp;
+		temp = file_request_list->next;
+		free(file_request_list);
+		file_request_list = temp;
 	}else{
 		while(temp->next)
 		{
@@ -72,20 +74,20 @@ int Session_Delete(int sid)
 	return 0;
 }
 
-int Session_Print_All()
+int File_Request_Print_All()
 {
-	SESS_DATA *iter = sess_list;
+	FILE_REQUEST *iter = file_request_list;
 	printf("Session Data:\n");
 	while(iter)
 	{
-		printf("{ sid:%d; username:%s; }\n", iter->sid, iter->username);
+		printf("{ sid:%d; from:%s; to:%s; fileName:%s; }\n", iter->sid, iter->from, iter->to, iter->fileName);
 		iter = iter->next;
 	}
 }
 
-const SESS_DATA *Session_Find(int sid)
+const FILE_REQUEST *File_Request_Find(int sid)
 {
-	const SESS_DATA *iter = sess_list;
+	const FILE_REQUEST *iter = file_request_list;
 	while(iter)
 	{
 		if(iter->sid==sid)

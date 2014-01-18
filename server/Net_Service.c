@@ -12,20 +12,11 @@
 #include "Util.h"
 #include "Database.h"
 #include "Session.h"
+#include "File.h"
+#include "Json.h"
 
 #define BUFF_LEN 2048
 
-char *GenerateErrorResp(char *errMes)
-{
-    cJSON *error = cJSON_CreateObject();
-    cJSON_AddStringToObject(error, "cmd", "error");
-    cJSON *attr = cJSON_CreateObject();
-    cJSON_AddItemToObject(error, "attr", attr);
-    cJSON_AddStringToObject(attr, "message", errMes);
-    char *errstr = cJSON_Print(error);
-    cJSON_Delete(error);
-	return errstr;
-}
 
 void HandleError(SSL *ssl, char *errStr)
 {
@@ -168,7 +159,7 @@ int HandleQueryPulse(SSL *ssl, int epollfd)
 int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 {
 	cJSON *child = attr->child;
-	char *to=NULL,*from=NULL, *filename=NULL;
+	char *to=NULL, *filename=NULL;
 
 	int q, a;
 	while(child)
@@ -176,10 +167,10 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 		if(strcmp(child->string, "to")==0)
 		{
 			to = child->valuestring;
-		}else if(strcmp(child->string, "q"))
+		}else if(strcmp(child->string, "q")==0)
 		{
 			q = child->valueint;
-		}else if(strcmp(child->string, "a"))
+		}else if(strcmp(child->string, "a")==0)
 		{
 			a = child->valueint;
 		}else if(strcmp(child->string, "filename")==0)
@@ -209,9 +200,20 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 		HandleError(ssl, "Please login first!");
 		return -1;
 	}
-	from = sess->username;
+	const char *from = sess->username;
 	
-	
+	FILE_REQUEST *fr = File_Request_Add((char*)from, to, filename, q, a);
+	if(!fr)
+	{
+		HandleError(ssl, "File request can not be handled.");
+		return -1;
+	}
+
+	char *resp = GenerateFileRequestResp(fr->sid, fr->y);
+	SSL_send(ssl, resp, strlen(resp));
+	free(resp);
+	File_Request_Print_All();
+	return 0;
 }
 
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)

@@ -10,10 +10,13 @@ typedef struct File_Request{
 	int q;	/*the encryption prime*/
 	int a; 	/*root of prime q*/
 	int x;	/*random number picked by server*/
-	int yb;	/*yb=(a^x)mod q*/
+	int y;	/*yb=(a^x)mod q*/
 	struct File_Request *next;	/*The list pointer, points to next*/
 }FILE_REQUEST;
 
-FILE_REQUEST *file_request_list = NULL;
+extern FILE_REQUEST *File_Request_Add(char *from, char *to, char *filename, int q, int a);
+extern int File_Request_Delete(int sid);
+extern int File_Request_Print_All();
+extern const FILE_REQUEST *File_Request_Find(int sid);
 
 #endif
