@@ -138,8 +138,9 @@ int HandleLogin(SSL *ssl, cJSON *attr)
 			HandleError(ssl, "Certificate is not ready?");
 			break;
 		case 0:		/*correct*/
+			sid = SSL_get_fd(ssl);
 			/*Add the session into the list*/
-			sid = Session_Add(username);
+			sid = Session_Add(sid, username);
 			/*Print all the session data for debug purpose*/
 			Session_Print_All();
     		respJson = cJSON_CreateObject();
@@ -171,7 +172,6 @@ int HandleQueryPulse(SSL *ssl, cJSON *attr)
 		child = child->next;
 	}
 
-	printf("sid:%d\n", sid);
 	if(sid==-1)
 	{
 		HandleError(ssl, "Who are you?");
@@ -349,9 +349,10 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	if(recvLen <= 0 || strncmp(buffer, "quit", 4)==0)
 	{
 		printf("client quit!\n");
-		SSL_Client_Leave(ssl_data, epollfd);
-		Session_Delete(epollfd);
+		int connfd = SSL_get_fd(ssl_data->ssl);
+		Session_Delete(connfd);
 		Session_Print_All();
+		SSL_Client_Leave(ssl_data, epollfd);
 		return;
 	}
 	printf("client %d: %s\n", SSL_get_fd(ssl_data->ssl), buffer);

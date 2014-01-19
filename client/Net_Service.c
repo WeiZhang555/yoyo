@@ -10,6 +10,8 @@
 #include <sys/time.h>
 #include <signal.h>
 #include <libgen.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include "util.h"
 #include "Security.h"
@@ -218,7 +220,10 @@ int ParseLoginResponse(char *buffer)
 int HandleSendingFile(cJSON *attr)
 {
 	if(!attr)
+	{
+		printf("attr can not be NULL!\n");
 		return -1;
+	}
 	cJSON *child = attr->child;
 	int sid, q;
 	char *from, *filename, *xa_en;
@@ -234,12 +239,32 @@ int HandleSendingFile(cJSON *attr)
 			q = child->valueint;
 		else if(0==strcmp(child->string, "xa_en"))
 			xa_en = child->valuestring;
+		child = child->next;
 	}
 
 	char privKeyName[512]={0};
 	snprintf(privKeyName, 511, "%sCert.pem", name);
+	printf("Decrypt XA witk key file:%s; \n", privKeyName);
 	char *xa = RSA_Decrypt(xa_en, privKeyName);
-	printf("XA:%s\n", xa);
+
+	printf("DECRYPT:XA:%s\n", xa);
+	char keyFileName[512]={0};
+	char dir[256]={0};
+	snprintf(dir, 255, "receiveFiles/%s", from);
+	if(0!=access(dir, F_OK))
+		mkdir(dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+	snprintf(keyFileName, 511, "%s/%s.key", dir, filename);
+	FILE *keyf = fopen(keyFileName, "w");
+	if(!keyf)
+	{
+		printf("Write to key file failed.\n");
+		return -1;
+	}
+	char output[512]={0};
+	snprintf(output, 511, "%d\n%s\n", q, xa);	
+	fwrite(output, sizeof(char), strlen(output), keyf);
+	fclose(keyf);
 	return 0;
 }
 
@@ -324,7 +349,7 @@ int Login()
 	}
 	if(sid>0)
 	{
-		printf("You already logined in!");
+		printf("You already logined in!\n");
 		return -1;
 	}
 	/*Second must check if we have the certificates*/
@@ -745,14 +770,14 @@ int GetFriendPubKey(char *username)
 	return 0;
 }
 
-int SendFileContentToServer(char *fileName, D_H dh)
+int SendFileContentToServer(char *to, char *fileName, D_H dh)
 {
 	if(!ssl_server_data)
 		return -1;
 	char buffer[1024];
 	char pubFile[512];
 	strcpy(pubFile, "pubs/");
-	strcat(pubFile, name);
+	strcat(pubFile, to);
 	strcat(pubFile, "Pub.pem");
 	FILE *pubf = fopen(pubFile, "r");
 	if(!pubf)
@@ -762,7 +787,9 @@ int SendFileContentToServer(char *fileName, D_H dh)
 	}
 	char xa[30]={0};
 	sprintf(xa, "%d", dh.x);
+	printf("XA:%s\n", xa);
 	/*The encrypted xa which will be sent to server.*/
+	printf("Encrypt XA with key:%s;\n", pubFile);
 	char *xa_en = RSA_Encrypt(xa, pubFile);
 	char *sendingFileName = "encrypted";
 
@@ -902,7 +929,7 @@ int SendFile()
 	}
 	/*Step 4: Send file content to server*/
 	
-	if(-1==SendFileContentToServer(fileName, dh))
+	if(-1==SendFileContentToServer(userName, fileName, dh))
 	{
 		printf("Error occured when sending file content to server.\n");
 		return -1;
