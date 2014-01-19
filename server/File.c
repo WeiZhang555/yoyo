@@ -86,9 +86,9 @@ int File_Request_Print_All()
 	}
 }
 
-const FILE_REQUEST *File_Request_Find(int sid)
+FILE_REQUEST *File_Request_Find(int sid)
 {
-	const FILE_REQUEST *iter = file_request_list;
+	FILE_REQUEST *iter = file_request_list;
 	while(iter)
 	{
 		if(iter->sid==sid)

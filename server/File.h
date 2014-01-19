@@ -18,6 +18,6 @@ typedef struct File_Request{
 extern FILE_REQUEST *File_Request_Add(char *from, char *to, char *filename, int q, int a);
 extern int File_Request_Delete(int sid);
 extern int File_Request_Print_All();
-extern const FILE_REQUEST *File_Request_Find(int sid);
+extern FILE_REQUEST *File_Request_Find(int sid);
 
 #endif

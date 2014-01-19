@@ -5,6 +5,8 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "../lib/SSL_Wrapper.h"
 #include "../lib/Security.h"
@@ -238,7 +240,7 @@ int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
 	}
 
 	printf("sid:%d\n", sid);
-	const FILE_REQUEST *fr = File_Request_Find(sid);
+	FILE_REQUEST *fr = File_Request_Find(sid);
 	if(!fr)
 	{
 		HandleError(ssl, "Can not find file request session!");
@@ -248,7 +250,14 @@ int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
 	char *resp = "{\n\"cmd\": \"waiting_to_receive\"\n}";
 	SSL_send(ssl, resp, strlen(resp));
     
-	FILE *f = fopen(fr->fileName, "w");
+	char filePath[512]={0};
+	char dir[256]={0};
+	snprintf(dir, 255, "receiveFiles/%s", fr->from);
+	if(0>access(dir, F_OK))
+		mkdir(dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+	snprintf(filePath,255, "%s/%s", dir, fr->fileName);
+	
+	FILE *f = fopen(filePath, "w");
     if(!f)
         printf("File [%s] can not open!\n", fr->fileName);
 
@@ -271,8 +280,9 @@ int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
     }
     if(!f)
         return -1;
-	printf("done.\n");
     fclose(f);
+	printf("done.\n");
+	fr->ready = 1;
 	return 0;
 }
 
