@@ -7,7 +7,8 @@
 
 FILE_REQUEST *file_request_list = NULL;
 
-int GetRandom(int max)
+
+static int GetRandom(int max)
 {
 	srand(time(NULL));
 	return rand()%max;
@@ -55,6 +56,7 @@ int File_Request_Delete(int sid)
 	if(file_request_list->sid==sid)
 	{
 		temp = file_request_list->next;
+		free(file_request_list->xa_en);
 		free(file_request_list);
 		file_request_list = temp;
 	}else{
@@ -68,6 +70,7 @@ int File_Request_Delete(int sid)
 		if(NULL==temp->next)
 			return -1;
 		next = temp->next->next;
+		free(temp->next->xa_en);
 		free(temp->next);
 		temp->next = next;
 	}
@@ -92,6 +95,18 @@ FILE_REQUEST *File_Request_Find(int sid)
 	while(iter)
 	{
 		if(iter->sid==sid)
+			break;
+		iter = iter->next;
+	}
+	return iter;
+}
+
+FILE_REQUEST *File_Request_To_Whom(char *username)
+{
+	FILE_REQUEST *iter = file_request_list;
+	while(iter)
+	{
+		if(0==strcmp(username, iter->to))
 			break;
 		iter = iter->next;
 	}

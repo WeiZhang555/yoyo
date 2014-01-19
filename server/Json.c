@@ -28,3 +28,20 @@ char *GenerateFileRequestResp(int sid, int y)
     cJSON_Delete(respJson);
 	return respStr;
 }
+
+char *GenerateFileSendingResp(int sid, char *from, char *filename, int q, char *xa_en)
+{
+	cJSON *respJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(respJson, "cmd", "sending_file_next");
+	cJSON *attr = cJSON_CreateObject();
+    cJSON_AddItemToObject(respJson, "attr", attr);
+    cJSON_AddNumberToObject(attr, "sid", sid);
+    cJSON_AddStringToObject(attr, "from", from);
+    cJSON_AddStringToObject(attr, "filename", filename);
+    cJSON_AddNumberToObject(attr, "q", q);
+    cJSON_AddStringToObject(attr, "xa_en", xa_en);
+    char *respStr = cJSON_Print(respJson);
+    cJSON_Delete(respJson);
+	return respStr;
+	
+}

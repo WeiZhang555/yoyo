@@ -19,6 +19,11 @@
 
 #define BUFF_LEN 2048
 
+static int GetRandom(int max)
+{
+	srand(time(NULL));
+	return rand()%max;
+}
 
 void HandleError(SSL *ssl, char *errStr)
 {
@@ -99,7 +104,7 @@ int HandleCertStatusUpdate(SSL *ssl, cJSON *attr)
 	return 0;
 }
 
-int HandleLogin(SSL *ssl,int epollfd, cJSON *attr)
+int HandleLogin(SSL *ssl, cJSON *attr)
 {
 	if(!ssl || !attr)	return -1;
 	char *username=NULL, *password=NULL;
@@ -117,6 +122,7 @@ int HandleLogin(SSL *ssl,int epollfd, cJSON *attr)
 	if(!username || !password)
 		return -1;
 	int status = DB_Login(username, password);
+	int sid=-1;
 	cJSON *respJson; char *respStr=NULL;
 	switch(status){
 		case -1:	/*Unknown Error*/
@@ -132,15 +138,18 @@ int HandleLogin(SSL *ssl,int epollfd, cJSON *attr)
 			HandleError(ssl, "Certificate is not ready?");
 			break;
 		case 0:		/*correct*/
+			/*Add the session into the list*/
+			sid = Session_Add(username);
+			/*Print all the session data for debug purpose*/
+			Session_Print_All();
     		respJson = cJSON_CreateObject();
     		cJSON_AddStringToObject(respJson, "cmd", "success");
+			cJSON *attr = cJSON_CreateObject();
+			cJSON_AddItemToObject(respJson, "attr", attr);
+			cJSON_AddNumberToObject(attr, "sid", sid);
     		respStr = cJSON_Print(respJson);
     		cJSON_Delete(respJson);
 			SSL_send(ssl, respStr, strlen(respStr));
-			/*Add the session into the list*/
-			Session_Add(epollfd, username);
-			/*Print all the session data for debug purpose*/
-			Session_Print_All();
 			free(respStr);
 			break;
 		default:
@@ -149,24 +158,60 @@ int HandleLogin(SSL *ssl,int epollfd, cJSON *attr)
 	return 0;
 }
 
-int HandleQueryPulse(SSL *ssl, int epollfd)
+int HandleQueryPulse(SSL *ssl, cJSON *attr)
 {
-	const SESS_DATA *sess = Session_Find(epollfd);
-	if(sess)
+	if(!attr)
+		return -1;
+	cJSON *child = attr->child;
+	int sid=-1;
+	while(child)
 	{
-		printf("Heartbeat:%s\n", sess->username);
+		if(0==strcmp(child->string, "sid"))
+			sid = child->valueint;
+		child = child->next;
 	}
+
+	printf("sid:%d\n", sid);
+	if(sid==-1)
+	{
+		HandleError(ssl, "Who are you?");
+		return -1;
+	}
+	SESS_DATA *sess = Session_Find(sid);
+	if(!sess)
+	{
+		HandleError(ssl, "Please login first!");
+		return -1;
+	}
+		
+	char *username = sess->username;
+	
+	FILE_REQUEST *fr = File_Request_To_Whom(username);
+	if(!fr)
+	{
+		char *resp = "{\n\"cmd\": \"none\"\n}";
+		SSL_send(ssl, resp, strlen(resp));
+	}else{
+		char *resp = GenerateFileSendingResp(fr->sid, fr->from, fr->fileName, fr->q, fr->xa_en);
+		SSL_send(ssl, resp, strlen(resp));
+		free(resp);
+		/*Next is to waiting for the client's confirm*/
+	}
+
 }
 
-int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
+int HandleFileQuery(SSL *ssl,  cJSON *attr)
 {
 	cJSON *child = attr->child;
 	char *to=NULL, *filename=NULL;
 
-	int q, a;
+	int q, a, sid;
 	while(child)
 	{
-		if(strcmp(child->string, "to")==0)
+		if(strcmp(child->string, "sid")==0)
+		{
+			sid = child->valueint;
+		}else if(strcmp(child->string, "to")==0)
 		{
 			to = child->valuestring;
 		}else if(strcmp(child->string, "q")==0)
@@ -196,7 +241,7 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 	}
 
 	/*Check if the user has logined in*/
-	const SESS_DATA *sess = Session_Find(epollfd);
+	const SESS_DATA *sess = Session_Find(sid);
 	if(sess==NULL)
 	{
 		HandleError(ssl, "Please login first!");
@@ -219,12 +264,12 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 }
 
 
-int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
+int HandleSendingFile(SSL *ssl, cJSON *attr)
 {
 	if(!ssl)
 		return -1;
 	int sid;
-	char *x_en=NULL;
+	char *xa_en=NULL;
 	cJSON *child = attr->child;
 	while(child)
 	{
@@ -233,13 +278,13 @@ int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
 			sid = child->valueint;
 		}else if(strcmp(child->string, "x_en")==0)
 		{
-			x_en = child->valuestring;
+			xa_en = child->valuestring;
 		}
 		
 		child = child->next;
 	}
 
-	printf("sid:%d\n", sid);
+	printf("sid:%d; xa_en length:%d;\n", sid, (int)strlen(xa_en));
 	FILE_REQUEST *fr = File_Request_Find(sid);
 	if(!fr)
 	{
@@ -247,6 +292,9 @@ int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
 		return -1;
 	}
 
+	fr->xa_en = (char*)malloc(strlen(xa_en)+1);
+	bzero(fr->xa_en, strlen(xa_en)+1);
+	memcpy(fr->xa_en, xa_en, strlen(xa_en));
 	char *resp = "{\n\"cmd\": \"waiting_to_receive\"\n}";
 	SSL_send(ssl, resp, strlen(resp));
     
@@ -338,16 +386,16 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 		HandleCertStatusUpdate(ssl, attr);
 	}else if(0==strcmp(cmd->valuestring, "login"))
 	{
-		HandleLogin(ssl,epollfd,attr);
+		HandleLogin(ssl,attr);
 	}else if(0==strcmp(cmd->valuestring, "query_pulse"))
 	{
-		HandleQueryPulse(ssl, epollfd);
+		HandleQueryPulse(ssl, attr);
 	}else if(0==strcmp(cmd->valuestring, "file_query"))
 	{
-		HandleFileQuery(ssl, epollfd, attr);
+		HandleFileQuery(ssl,  attr);
 	}else if(0==strcmp(cmd->valuestring, "sending_file_next"))
 	{
-		HandleSendingFile(ssl, epollfd, attr);
+		HandleSendingFile(ssl, attr);
 	}
 
 	cJSON_Delete(root);

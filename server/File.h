@@ -1,6 +1,7 @@
 #ifndef FILE_REQUEST_H
 #define FILE_REQUEST_H
 
+/*SERVER: b; CLIENT: a;*/
 typedef struct File_Request{
 	int sid;	/*file request session id*/
 	char from[256];	/*File from*/
@@ -11,6 +12,7 @@ typedef struct File_Request{
 	int a; 	/*root of prime q*/
 	int x;	/*random number picked by server*/
 	int y;	/*yb=(a^x)mod q*/
+	char *xa_en;	/*Encrypted xa from client*/
 	int ready;	/*set to 1 if ready to send to friend*/
 	struct File_Request *next;	/*The list pointer, points to next*/
 }FILE_REQUEST;
@@ -19,5 +21,5 @@ extern FILE_REQUEST *File_Request_Add(char *from, char *to, char *filename, int 
 extern int File_Request_Delete(int sid);
 extern int File_Request_Print_All();
 extern FILE_REQUEST *File_Request_Find(int sid);
-
+extern FILE_REQUEST *File_Request_To_Whom(char *username);
 #endif

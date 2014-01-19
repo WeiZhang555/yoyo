@@ -21,8 +21,25 @@
 SSL_CLIENT_DATA *ssl_server_data = NULL;
 SSL_CLIENT_DATA *ssl_cm_data = NULL;
 char name[256]={0}, passwd[256]={0}, email[256]={0};
-
+int sid=-1;	/*Session id*/	
 extern char *CreateLoginJSON(char *name, char *passwd);
+void Heartbeat(int);
+
+void StartTimer()
+{
+	struct itimerval value;
+	value.it_value.tv_sec = PULSE_INTERVAL;
+	value.it_value.tv_usec = 0;
+	value.it_interval.tv_sec = PULSE_INTERVAL ;
+	value.it_interval.tv_usec = 0;
+	setitimer(ITIMER_REAL, &value, NULL);
+	signal(SIGALRM, Heartbeat);
+}
+
+void StopTimer()
+{
+	setitimer(ITIMER_REAL, NULL, NULL);
+}
 
 void Disconnect_Server()
 {
@@ -30,7 +47,7 @@ void Disconnect_Server()
 	{
 		SSL_Connect_Close(ssl_server_data);
 		ssl_server_data = NULL;
-		setitimer(ITIMER_REAL, NULL, NULL);
+		StopTimer();
 	}
 }
 
@@ -190,34 +207,110 @@ int ParseLoginResponse(char *buffer)
 		return -1;
 	}else if(0==strcmp(cmd->valuestring, "success"))
 	{
+		cJSON *child = attr->child;
+		if(0==strcmp(child->string, "sid"))
+			sid = child->valueint;
 		cJSON_Delete(root);
 		return 0;
 	}
+}
+
+int HandleSendingFile(cJSON *attr)
+{
+	if(!attr)
+		return -1;
+	cJSON *child = attr->child;
+	int sid, q;
+	char *from, *filename, *xa_en;
+	while(child)
+	{
+		if(0==strcmp(child->string, "sid"))
+			sid = child->valueint;
+		else if(0==strcmp(child->string, "from"))
+			from = child->valuestring;
+		else if(0==strcmp(child->string, "filename"))
+			filename = child->valuestring;
+		else if(0==strcmp(child->string, "q"))
+			q = child->valueint;
+		else if(0==strcmp(child->string, "xa_en"))
+			xa_en = child->valuestring;
+	}
+
+	char privKeyName[512]={0};
+	snprintf(privKeyName, 511, "%sCert.pem", name);
+	char *xa = RSA_Decrypt(xa_en, privKeyName);
+	printf("XA:%s\n", xa);
+	return 0;
+}
+
+int Query_Period()
+{
+	char *pulseStr = CreateQueryPulseJSON(sid);
+	
+	if(!ssl_server_data)
+	{
+		StopTimer();
+		return -1;
+	}
+	SSL *ssl = ssl_server_data->ssl;
+	if(0>=SSL_send(ssl, pulseStr, strlen(pulseStr)))
+	{
+		free(pulseStr);
+		StopTimer();
+		Disconnect_Server();
+		return -1;
+	}
+	free(pulseStr);
+
+	char buffer[1024]={0};
+	if(0>=SSL_recv(ssl, buffer, 1023))
+	{
+		printf("Server down!\n");
+		StopTimer();
+		Disconnect_Server();
+		return -1;
+	}
+	
+	printf("From server:%s\n", buffer);
+	cJSON *root = cJSON_Parse(buffer);
+	cJSON *cmd, *attr, *child;
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		printf("server error:%s\n", attr->child->valuestring);
+		cJSON_Delete(root);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "none"))
+	{
+		printf("Nothing new...\n");
+	}else if(0==strcmp(cmd->valuestring, "sending_file_next"))
+	{
+		if(-1==HandleSendingFile(attr))
+		{
+			printf("Handle file sending request error.\n");
+			cJSON_Delete(root);
+			return -1;
+		}
+		
+	}
+	cJSON_Delete(root);
+	return 0;
 }
 
 /*The heartbeat pulse*/
 void Heartbeat(int sig)
 {
 	printf("Heartbeat!\n");
-	char *pulseStr = "{\n\"cmd\":  \"query_pulse\"\n}";
-	/*cJSON *pulseJson = cJSON_CreateObject();
-	cJSON_AddStringToObject(pulseJson, "cmd", "query_pulse");
-	char *pulseStr = cJSON_Print(pulseJson);
-	cJSON_Delete(pulseJson);*/
-	if(!ssl_server_data)
-	{
-		setitimer(ITIMER_REAL, NULL, NULL);
-		return;
-	}
-	if(0>=SSL_send(ssl_server_data->ssl, pulseStr, strlen(pulseStr)))
-	{
-		setitimer(ITIMER_REAL, NULL, NULL);
-		Disconnect_Server();
-		//free(pulseStr);
-		return;
-	}
-	//free(pulseStr);
-	fflush(NULL);
+	Query_Period();	
 }
 
 /*Login process*/
@@ -228,6 +321,11 @@ int Login()
 	{
 		GetUserName();
 		GetUserPassword();
+	}
+	if(sid>0)
+	{
+		printf("You already logined in!");
+		return -1;
 	}
 	/*Second must check if we have the certificates*/
 	char certFile[1024]={0};
@@ -281,14 +379,11 @@ int Login()
 	if(0==ParseLoginResponse(buffer))
 	{
 		printf("Login successfully!\n");
+		/*Ask server if there is something new happened.
+         like a new file waiting to send*/
+		Query_Period();
 		/*Set the timer to generate heartbeat pulse to the server periodly*/
-		struct itimerval value;
-		value.it_value.tv_sec = PULSE_INTERVAL;
-		value.it_value.tv_usec = 0;
-		value.it_interval.tv_sec = PULSE_INTERVAL ;
-		value.it_interval.tv_usec = 0;
-		setitimer(ITIMER_REAL, &value, NULL);
-		signal(SIGALRM, Heartbeat);
+		StartTimer();
 	}
 	return 0;
 }
@@ -496,7 +591,7 @@ int SendFileRequestToServer(char *userName, char *fileName, D_H *dh)
 	if(!ssl_server_data)	
 		return -1;
 	SSL *ssl = ssl_server_data->ssl;
-	char *fileStr = CreateFileQueryJSON(userName, fileName, *dh);
+	char *fileStr = CreateFileQueryJSON(sid, userName, fileName, *dh);
 	SSL_send(ssl, fileStr, strlen(fileStr));
 	free(fileStr);
 
@@ -895,6 +990,7 @@ int Client_Service_Start(char *ip, int servport)
 			bzero(name, 256);
 			bzero(passwd, 256);
 			bzero(email, 256);
+			sid = -1;
 		}else if(0==strcmp("quit", cmd)){
 			printf("Client quit, bye.\n");
 			return 0;

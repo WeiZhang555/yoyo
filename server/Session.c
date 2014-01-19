@@ -3,26 +3,35 @@
 #include <string.h>
 #include "Session.h"
 
+#define MAX_INT (1<<30)
+
 SESS_DATA *sess_list = NULL;
 
-int Session_Add(int sid, char *username)
+extern int GetRandom(int max)
+{
+	srand(time(NULL));
+	return rand()%max;
+}
+
+int Session_Add(char *username)
 {
 	SESS_DATA *s = (SESS_DATA*)malloc(sizeof(SESS_DATA));
 	if(!s)	return -1;
-	s->sid = sid;
 	s->next = NULL;
 	bzero(s->username, 256);
 	strncpy(s->username, username, 255);
 	SESS_DATA *iter = sess_list;
 	if(!sess_list)
 	{
+		s->sid = GetRandom(100);
 		sess_list = s;
 	}else{
 		while(iter->next)
 			iter = iter->next;
 		iter->next = s;
+		s->sid = (iter->sid+1)%MAX_INT;
 	}
-	return 0;
+	return s->sid;
 }
 
 int Session_Delete(int sid)
@@ -64,9 +73,9 @@ int Session_Print_All()
 	}
 }
 
-const SESS_DATA *Session_Find(int sid)
+SESS_DATA *Session_Find(int sid)
 {
-	const SESS_DATA *iter = sess_list;
+	SESS_DATA *iter = sess_list;
 	while(iter)
 	{
 		if(iter->sid==sid)
