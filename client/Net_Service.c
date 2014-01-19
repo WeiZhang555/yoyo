@@ -15,6 +15,7 @@
 #include "Security.h"
 #include "Json.h"
 #include "../lib/SSL_Wrapper.h"
+#include "../lib/Security.h"
 #include "../lib/cJSON/cJSON.h"
 
 SSL_CLIENT_DATA *ssl_server_data = NULL;
@@ -495,7 +496,7 @@ int SendFileRequestToServer(char *userName, char *fileName, D_H *dh)
 	if(!ssl_server_data)	
 		return -1;
 	SSL *ssl = ssl_server_data->ssl;
-	char *fileStr = CreateFileQueryJSON(userName, fileName, dh);
+	char *fileStr = CreateFileQueryJSON(userName, fileName, *dh);
 	SSL_send(ssl, fileStr, strlen(fileStr));
 	free(fileStr);
 
@@ -632,7 +633,7 @@ int GetFriendPubKey(char *username)
 	SSL *ssl = ssl_cm_data->ssl;
 	if(!ssl)	return -1;
 
-	char *pubStr = CreatePubRequestJson(username);
+	char *pubStr = CreatePubRequestJSON(username);
 	SSL_send(ssl, pubStr, strlen(pubStr));
 	free(pubStr);
 	bzero(buffer ,1024);	
@@ -647,6 +648,88 @@ int GetFriendPubKey(char *username)
 	if(status<0)
 		return -1;
 	return 0;
+}
+
+int SendFileContentToServer(char *fileName, D_H dh)
+{
+	if(!ssl_server_data)
+		return -1;
+	char buffer[1024];
+	char pubFile[512];
+	strcpy(pubFile, "pubs/");
+	strcat(pubFile, name);
+	strcat(pubFile, "Pub.pem");
+	FILE *pubf = fopen(pubFile, "r");
+	if(!pubf)
+	{
+		printf("Can't find the public key for user [%s]!\n", name);
+		return -1;
+	}
+	char xa[30]={0};
+	sprintf(xa, "%d", dh.x);
+	/*The encrypted xa which will be sent to server.*/
+	char *xa_en = RSA_Encrypt(xa, pubFile);
+	char *sendingFileName = "encrypted";
+
+	char key[100]={0};
+	sprintf(key, "%d", dh.K);
+	printf("Encrypting file with Key:%s...\n", key);
+	if(DES_Encrypt(fileName, sendingFileName, key, strlen(key)))
+	{
+		printf("Encrypt failed.\n");
+		return -1;
+	}
+
+	char *fileStr = CreateFileSendingJSON(dh.sid, xa_en, basename(fileName));
+	SSL_send(ssl_server_data->ssl, fileStr, strlen(fileStr));	
+	bzero(buffer, 1024);
+	if(0>=SSL_recv(ssl_server_data->ssl, buffer, 1024))
+	{
+		printf("Can't receive command from server!\n");
+		Disconnect_Server();
+		return -1;
+	}
+	printf("From server:%s\n", buffer);
+	cJSON *root = cJSON_Parse(buffer);
+	cJSON *cmd=NULL, *attr=NULL, *child=root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		printf("%s\n", attr->child->valuestring);
+		cJSON_Delete(root);
+	}else if(0==strcmp(cmd->valuestring, "waiting_to_receive"))
+	{
+		/*Begin to send file to server*/
+		printf("Sending file....\n");
+		char buffer[512]={0};
+		FILE *file = fopen("encrypted", "r");
+		int sendLen=0, len;
+		while(!feof(file))
+		{
+			len = fread(buffer, sizeof(char), 511, file);
+			if(len<=0)
+				break;
+			buffer[len] = '\0';
+			sendLen = SSL_send(ssl_server_data->ssl, buffer, len);
+			if(sendLen<len)
+				break;
+		}
+		SSL_send(ssl_server_data->ssl, "!@done*#", 8);
+		printf("Done.\n");
+		fclose(file);
+
+	}
+
+	cJSON_Delete(root);
+	free(fileStr);
+	fclose(pubf);
 }
 
 int SendFile()
@@ -698,17 +781,36 @@ int SendFile()
 		return -1;
 	}
 
-	/*Step 1: tell the server to prepare for file encryption next*/
+	/*Step 2: tell the server to prepare for file encryption next*/
 	if(-1==SendFileRequestToServer(userName, basename(fileName), &dh))
 	{
 		printf("File sending failed.\n");
 		return -1;
 	}
 
-	/*File sending request accepted by server. Now we need to get the friend user's pub key*/
-	if(-1==GetFriendPubKey(userName))
+	/*Step 3: File sending request accepted by server. Now we need to get the friend user's pub key*/
+	/*Check if the public key exists, if no, get from cm*/
+	char pubFile[512];
+	strcpy(pubFile, "pubs/");
+	strcat(pubFile, userName);
+	strcat(pubFile, "Pub.pem");
+	FILE *pubf = fopen(pubFile, "r");
+	if(!pubf)
 	{
-		printf("Get certificate from server failed.");
+		if(-1==GetFriendPubKey(userName))
+		{
+			printf("Get certificate from server failed.");
+			return -1;
+		}
+	}else{
+		fclose(pubf);
+	}
+	/*Step 4: Send file content to server*/
+	
+	if(-1==SendFileContentToServer(fileName, dh))
+	{
+		printf("Error occured when sending file content to server.\n");
+		return -1;
 	}
 	return 0;
 }

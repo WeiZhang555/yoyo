@@ -11,6 +11,7 @@ typedef struct File_Request{
 	int a; 	/*root of prime q*/
 	int x;	/*random number picked by server*/
 	int y;	/*yb=(a^x)mod q*/
+	int ready;	/*set to 1 if ready to send to friend*/
 	struct File_Request *next;	/*The list pointer, points to next*/
 }FILE_REQUEST;
 

@@ -59,7 +59,7 @@ char *CreateStatusUpdateJSON(char *name)
 	return certStr;
 }
 
-char *CreateFileQueryJSON(char *to, char *filename, D_H *dh)
+char *CreateFileQueryJSON(char *to, char *filename, D_H dh)
 {
 	cJSON *fileQuery = cJSON_CreateObject();
 	cJSON_AddStringToObject(fileQuery, "cmd", "file_query");
@@ -67,14 +67,14 @@ char *CreateFileQueryJSON(char *to, char *filename, D_H *dh)
 	cJSON_AddItemToObject(fileQuery, "attr", attr);
 	cJSON_AddStringToObject(attr, "to", to);
 	cJSON_AddStringToObject(attr, "filename", filename);
-	cJSON_AddNumberToObject(attr, "q", dh->q);
-	cJSON_AddNumberToObject(attr, "a", dh->a);
+	cJSON_AddNumberToObject(attr, "q", dh.q);
+	cJSON_AddNumberToObject(attr, "a", dh.a);
 	char *fileStr = cJSON_Print(fileQuery);
 	cJSON_Delete(fileQuery);
 	return fileStr;
 }
 
-char *CreatePubRequestJson(char *name)
+char *CreatePubRequestJSON(char *name)
 {
 	cJSON *fileQuery = cJSON_CreateObject();
 	cJSON_AddStringToObject(fileQuery, "cmd", "pubkey_query");
@@ -85,4 +85,17 @@ char *CreatePubRequestJson(char *name)
 	cJSON_Delete(fileQuery);
 	return pubStr;
 
+}
+
+char *CreateFileSendingJSON(int sid, char *xa_en, char *fileName_en)
+{
+	cJSON *fileQuery = cJSON_CreateObject();
+	cJSON_AddStringToObject(fileQuery, "cmd", "sending_file_next");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(fileQuery, "attr", attr);
+	cJSON_AddNumberToObject(attr, "sid", sid);
+	cJSON_AddStringToObject(attr, "x_en",xa_en);
+	char *fileStr = cJSON_Print(fileQuery);
+	cJSON_Delete(fileQuery);
+	return fileStr;
 }

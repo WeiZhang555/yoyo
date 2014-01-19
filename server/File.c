@@ -28,6 +28,7 @@ FILE_REQUEST *File_Request_Add(char *from, char *to, char *filename, int q, int 
 	strncpy(fr->fileName, filename, 255);
 	fr->q = q;
 	fr->a = a;
+	fr->ready = 0;
 	fr->next = NULL;
 	FILE_REQUEST *iter = file_request_list;
 	if(!file_request_list)

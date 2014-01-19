@@ -17,3 +17,4 @@ int PickDH(D_H *dh)
 	dh->a = DEFAULT_A;
 	dh->x = Get_Random(dh->q);
 }
+

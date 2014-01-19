@@ -216,6 +216,66 @@ int HandleFileQuery(SSL *ssl, int epollfd, cJSON *attr)
 	return 0;
 }
 
+
+int HandleSendingFile(SSL *ssl, int epollfd, cJSON *attr)
+{
+	if(!ssl)
+		return -1;
+	int sid;
+	char *x_en=NULL;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(strcmp(child->string, "sid")==0)
+		{
+			sid = child->valueint;
+		}else if(strcmp(child->string, "x_en")==0)
+		{
+			x_en = child->valuestring;
+		}
+		
+		child = child->next;
+	}
+
+	printf("sid:%d\n", sid);
+	const FILE_REQUEST *fr = File_Request_Find(sid);
+	if(!fr)
+	{
+		HandleError(ssl, "Can not find file request session!");
+		return -1;
+	}
+
+	char *resp = "{\n\"cmd\": \"waiting_to_receive\"\n}";
+	SSL_send(ssl, resp, strlen(resp));
+    
+	FILE *f = fopen(fr->fileName, "w");
+    if(!f)
+        printf("File [%s] can not open!\n", fr->fileName);
+
+    char buffer[512];
+    int len = 0;
+	printf("Receive file from client [%s]...", fr->from);
+    while(1)
+    {
+        len = SSL_recv(ssl,buffer, 511);
+        if(len <=0)
+            break;
+        buffer[len] = '\0';
+        if(0==strcmp("!@done*#",buffer ))
+            break;
+        else
+        {
+            if(f)
+                fwrite(buffer, sizeof(char), len, f);
+        }
+    }
+    if(!f)
+        return -1;
+	printf("done.\n");
+    fclose(f);
+	return 0;
+}
+
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
@@ -275,6 +335,9 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}else if(0==strcmp(cmd->valuestring, "file_query"))
 	{
 		HandleFileQuery(ssl, epollfd, attr);
+	}else if(0==strcmp(cmd->valuestring, "sending_file_next"))
+	{
+		HandleSendingFile(ssl, epollfd, attr);
 	}
 
 	cJSON_Delete(root);

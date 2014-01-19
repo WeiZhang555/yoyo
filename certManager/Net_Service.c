@@ -233,6 +233,7 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 						break;
 				}
 				SSL_send(ssl, "!@done*#", 8);
+				printf("Done.\n");
 				fclose(file);
 			}
 		}

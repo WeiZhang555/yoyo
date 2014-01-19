@@ -14,4 +14,6 @@ typedef struct Diffie_Hellman{
 	int K;	/*K=yb^x mod q*/
 }D_H;
 
+extern int PickDH(D_H *dh);
+
 #endif
