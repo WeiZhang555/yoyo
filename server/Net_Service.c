@@ -197,6 +197,7 @@ int HandleQueryPulse(SSL *ssl, cJSON *attr)
 		SSL_send(ssl, resp, strlen(resp));
 		free(resp);
 		/*Next is to waiting for the client's confirm*/
+		
 	}
 
 }
@@ -335,6 +336,55 @@ int HandleSendingFile(SSL *ssl, cJSON *attr)
 	return 0;
 }
 
+int HandleReceivingFile(SSL *ssl, cJSON *attr)
+{	
+	if(!ssl)
+		return -1;
+	int sid;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(strcmp(child->string, "sid")==0)
+		{
+			sid = child->valueint;
+		}
+		
+		child = child->next;
+	}
+
+	FILE_REQUEST *fr = File_Request_Find(sid);
+	char *from = fr->from;
+	char *filename = fr->fileName;
+	char filepath[512] = {0};
+
+	snprintf(filepath, 511,"receiveFiles/%s/%s", from, filename);	
+	/*Begin to send file to server*/
+	printf("Sending file....\n");
+	char buffer[512]={0};
+	FILE *file = fopen(filepath, "r");
+	if(!file)
+	{
+		printf("Can't open file [%s].\n", filepath);
+		return -1;
+	}
+	int sendLen=0, len;
+	while(!feof(file))
+	{
+		len = fread(buffer, sizeof(char), 511, file);
+		if(len<=0)
+			break;
+		buffer[len] = '\0';
+		sendLen = SSL_send(ssl, buffer, len);
+		if(sendLen<len)
+			break;
+	}
+	SSL_send(ssl, "!@done*#", 8);
+	printf("Done.\n");
+	fclose(file);
+
+	return 0;
+}
+
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
@@ -398,6 +448,9 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}else if(0==strcmp(cmd->valuestring, "sending_file_next"))
 	{
 		HandleSendingFile(ssl, attr);
+	}else if(0==strcmp(cmd->valuestring, "receiving_file_next"))
+	{
+		HandleReceivingFile(ssl, attr);
 	}
 
 	cJSON_Delete(root);

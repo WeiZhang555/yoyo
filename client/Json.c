@@ -113,3 +113,14 @@ char *CreateQueryPulseJSON(int sid)
 	return queryStr;
 }
 
+char *CreateFileWaitingJSON(int sid)
+{
+	cJSON *queryJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(queryJson, "cmd", "receiving_file_next");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(queryJson, "attr", attr);
+	cJSON_AddNumberToObject(attr, "sid", sid);
+	char *queryStr = cJSON_Print(queryJson);
+	cJSON_Delete(queryJson);
+	return queryStr;
+}

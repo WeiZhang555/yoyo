@@ -6,3 +6,4 @@ extern char *CreateFileQueryJSON(int sid, char *to, char *filename, D_H dh);
 extern char *CreatePubRequestJSON(char *name);
 extern char *CreateFileSendingJSON(int sid, char *xa_en, char *fileName_en);
 extern char *CreateQueryPulseJSON(int sid);
+extern char *CreateFileWaitingJSON(int sid);

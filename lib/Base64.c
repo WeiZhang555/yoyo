@@ -2,9 +2,8 @@
 #include <openssl/evp.h>
 #include <openssl/buffer.h>
 #include <string.h>
-#include <stdint.h>
 
-int Base64Encode(const uint8_t* buffer, size_t length, char** b64text) { //Encodes a binary safe base 64 string
+int Base64Encode(const unsigned char* buffer, int length, char** b64text) { //Encodes a binary safe base 64 string
         BIO *bio, *b64;
         BUF_MEM *bufferPtr;
 
@@ -28,8 +27,8 @@ int Base64Encode(const uint8_t* buffer, size_t length, char** b64text) { //Encod
         return (0); //success
 }
 
-size_t calcDecodeLength(const char* b64input) { //Calculates the length of a decoded string
-        size_t len = strlen(b64input),
+int calcDecodeLength(const char* b64input) { //Calculates the length of a decoded string
+        int len = strlen(b64input),
                 padding = 0;
 
         if (b64input[len-1] == '=' && b64input[len-2] == '=') //last two chars are =
@@ -37,14 +36,14 @@ size_t calcDecodeLength(const char* b64input) { //Calculates the length of a dec
         else if (b64input[len-1] == '=') //last char is =
                 padding = 1;
 
-        return (size_t)len*0.75 - padding;
+        return (int)len*0.75 - padding;
 }
 
-int Base64Decode(char* b64message, uint8_t** buffer, size_t* length) { //Decodes a base64 encoded string
+int Base64Decode(char* b64message, unsigned char** buffer, int* length) { //Decodes a base64 encoded string
         BIO *bio, *b64;
 
         int decodeLen = calcDecodeLength(b64message);
-        *buffer = (uint8_t*)malloc(decodeLen);
+        *buffer = (unsigned char*)malloc(decodeLen);
 
         bio = BIO_new_mem_buf(b64message, -1);
         b64 = BIO_new(BIO_f_base64());

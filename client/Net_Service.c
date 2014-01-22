@@ -25,8 +25,8 @@ SSL_CLIENT_DATA *ssl_cm_data = NULL;
 char name[256]={0}, passwd[256]={0}, email[256]={0};
 int sid=-1;	/*Session id*/	
 
-extern int Base64Encode(const uint8_t* buffer, size_t length, char** b64text);
-extern int Base64Decode(char* b64message, uint8_t** buffer, size_t* length);
+extern int Base64Encode(const unsigned char* buffer, int length, char** b64text);
+extern int Base64Decode(char* b64message, unsigned char** buffer, int* length);
 void Heartbeat(int);
 
 void StartTimer()
@@ -226,14 +226,18 @@ int HandleSendingFile(cJSON *attr)
 		printf("attr can not be NULL!\n");
 		return -1;
 	}
+	char *xa_en=NULL;
+	int xa_en_len=0;
 	cJSON *child = attr->child;
-	int sid, q;
-	char *from, *filename, *xa_en_base64;
+	char *from=NULL, *filename=NULL, *xa_en_base64=NULL;
+	int q=0;
+	int sid=0;
 	while(child)
 	{
 		if(0==strcmp(child->string, "sid"))
+		{
 			sid = child->valueint;
-		else if(0==strcmp(child->string, "from"))
+		}else if(0==strcmp(child->string, "from"))
 			from = child->valuestring;
 		else if(0==strcmp(child->string, "filename"))
 			filename = child->valuestring;
@@ -246,22 +250,19 @@ int HandleSendingFile(cJSON *attr)
 
 	char privKeyName[512]={0};
 	snprintf(privKeyName, 511, "%sCert.pem", name);
-	printf("Decrypt XA witk key file:%s; \n", privKeyName);
-	char *xa_en;
-	int xa_en_len=0;
-	Base64Decode(xa_en_base64, &xa_en, &xa_en_len);
+	Base64Decode(xa_en_base64, (unsigned char **)&xa_en, &xa_en_len);
 
 	char *xa = NULL;
-	int xa_len = RSA_Decrypt(xa_en, privKeyName, &xa);
+	int xa_len = RSA_Decrypt((const unsigned char *)xa_en, privKeyName, (unsigned char **)&xa);
 
-	printf("DECRYPT:XA:%s\n", xa);
-	char keyFileName[512]={0};
+	char keyFileName[512]={0}, filePath[512]={0};
 	char dir[256]={0};
 	snprintf(dir, 255, "receiveFiles/%s", from);
 	if(0!=access(dir, F_OK))
 		mkdir(dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
 	snprintf(keyFileName, 511, "%s/%s.key", dir, filename);
+	snprintf(filePath, 511, "%s/%s", dir, filename);
 	FILE *keyf = fopen(keyFileName, "w");
 	if(!keyf)
 	{
@@ -269,9 +270,39 @@ int HandleSendingFile(cJSON *attr)
 		return -1;
 	}
 	char output[512]={0};
-	snprintf(output, 511, "%d\n%s\n", q, xa);	
+	snprintf(output, 511, "%d\n%d\n%s\n", sid, q, xa);	
 	fwrite(output, sizeof(char), strlen(output), keyf);
 	fclose(keyf);
+	
+	/*Waiting to Receive file content*/
+	char *receiveFileStr = CreateFileWaitingJSON(sid);
+	SSL_send(ssl_server_data->ssl, receiveFileStr, strlen(receiveFileStr));
+	
+    printf("Receive file [%s] from server...", filename);
+	FILE *file = fopen(filePath, "w");
+    if(!file)
+        printf("File [%s] can not open!\n", filename);
+
+    char buffer[512];
+    int len = 0;
+    while(1)
+    {
+        len = SSL_recv(ssl_server_data->ssl,buffer, 511);
+        if(len <=0)
+            break;
+        buffer[len] = '\0';
+        if(0==strcmp("!@done*#",buffer ))
+            break;
+        else
+        {
+            if(file)
+                fwrite(buffer, sizeof(char), len, file);
+        }
+    }
+    if(!file)
+        return -1;
+    fclose(file);
+    printf("done.\n");
 	return 0;
 }
 
@@ -798,7 +829,7 @@ int SendFileContentToServer(char *to, char *fileName, D_H dh)
 	/*The encrypted xa which will be sent to server.*/
 	printf("Encrypt XA with key:%s;\n", pubFile);
 	char *xa_en = NULL;
-	int xa_en_len = RSA_Encrypt(xa, strlen(xa), pubFile, &xa_en);
+	int xa_en_len = RSA_Encrypt((const unsigned char *)xa, strlen(xa), pubFile, (unsigned char **)&xa_en);
 	
 	/*Encode the xa_en with base64, for network transfer*/
 	char *xa_en_base64 = NULL;
