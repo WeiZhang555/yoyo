@@ -257,6 +257,9 @@ int HandleFileQuery(SSL *ssl,  cJSON *attr)
 		HandleError(ssl, "File request can not be handled.");
 		return -1;
 	}
+	printf("File requests:\n");
+	File_Request_Print_All();
+	fflush(NULL);
 
 	char *resp = GenerateFileRequestResp(fr->sid, fr->y);
 	SSL_send(ssl, resp, strlen(resp));
@@ -381,6 +384,25 @@ int HandleReceivingFile(SSL *ssl, cJSON *attr)
 	SSL_send(ssl, "!@done*#", 8);
 	printf("Done.\n");
 	fclose(file);
+
+	/*Record the key information into the database*/
+	if(0!=DB_Record_File_Info(fr))
+	{
+		printf("Database error!\n");
+		return -1;
+	}
+
+	/*Delete file request */
+	if(0!=File_Request_Delete(fr->sid))
+	{
+		printf("File request delete failed!\n");
+		return -1;
+	}
+	printf("File Requests:\n");
+	File_Request_Print_All();
+
+	/*Delete file from server end*/
+	remove(filepath);
 
 	return 0;
 }

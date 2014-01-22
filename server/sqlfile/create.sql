@@ -11,3 +11,14 @@ CREATE TABLE users(
 	email VARCHAR(50) NOT NULL,
 	cert_status INT DEFAULT 0
 ); 
+
+DROP TABLE IF EXISTS files;
+CREATE TABLE files(
+	sid INT NOT NULL,
+	user_from VARCHAR(50) NOT NULL,
+	user_to VARCHAR(50) NOT NULL,
+	fileName VARCHAR(256) NOT NULL,
+	Y INT NOT NULL,
+	status INT NOT NULL DEFAULT 1,	/*1 means valid, 0 means invalid*/
+	deleted INT NOT NULL DEFAULT 0 /*1 means deleted from client, vise verse 0*/
+);

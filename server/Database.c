@@ -7,6 +7,7 @@
 
 #include "../lib/Security.h"
 #include "Util.h"
+#include "File.h"
 
 static MYSQL *con = NULL;
 
@@ -203,5 +204,30 @@ int DB_Login(char *username, char *password)
 
 	mysql_free_result(result);
 	return 0;
-		
 }
+
+int DB_Record_File_Info(FILE_REQUEST *fr)
+{
+	if(!fr)
+		return -1;
+	char from[1024], to[1024], fileName[1024];
+	int sid = fr->sid;
+	int y = fr->y;
+	
+	mysql_real_escape_string(con, from, fr->from, strlen(fr->from));
+	mysql_real_escape_string(con, to, fr->to, strlen(fr->to));
+	mysql_real_escape_string(con, fileName, fr->fileName, strlen(fr->fileName));
+
+	char *prepSql = "INSERT INTO files(sid, user_from, user_to, fileName, Y) values (%d, '%s', '%s', '%s', %d)";
+	char sql[1024]={0};
+	snprintf(sql, 1024, prepSql, sid, from, to, fileName, y);
+		
+	if(mysql_query(con, sql))
+	{
+		printf("mysql_query error()!\n");
+		return -1;
+	}
+
+	return 0;
+}
+

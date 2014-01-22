@@ -879,7 +879,8 @@ int SendFileContentToServer(char *to, char *fileName, D_H dh)
 		/*Begin to send file to server*/
 		printf("Sending file....\n");
 		char buffer[512]={0};
-		FILE *file = fopen("encrypted", "r");
+		char *encFileName = "encrypted";
+		FILE *file = fopen(encFileName, "r");
 		int sendLen=0, len;
 		while(!feof(file))
 		{
@@ -894,7 +895,8 @@ int SendFileContentToServer(char *to, char *fileName, D_H dh)
 		SSL_send(ssl_server_data->ssl, "!@done*#", 8);
 		printf("Done.\n");
 		fclose(file);
-
+		/*delete file from filesystem*/
+		remove(encFileName);
 	}
 
 	cJSON_Delete(root);

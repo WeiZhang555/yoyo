@@ -7,7 +7,6 @@
 
 FILE_REQUEST *file_request_list = NULL;
 
-
 static int GetRandom(int max)
 {
 	srand(time(NULL));
@@ -81,7 +80,7 @@ int File_Request_Delete(int sid)
 int File_Request_Print_All()
 {
 	FILE_REQUEST *iter = file_request_list;
-	printf("Session Data:\n");
+	printf("File Request Data:\n");
 	while(iter)
 	{
 		printf("{ sid:%d; from:%s; to:%s; fileName:%s; }\n", iter->sid, iter->from, iter->to, iter->fileName);
