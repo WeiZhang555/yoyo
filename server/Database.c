@@ -231,3 +231,61 @@ int DB_Record_File_Info(FILE_REQUEST *fr)
 	return 0;
 }
 
+/**
+ *get user's key info for opening file.
+ *fsid: file's id
+ *from: file from whom
+ *to: file to whom
+ *fileName: file name
+ *return: >0(y):success; -1:no result; -2:status invalid; -3:deleted; -4:database error 
+ */
+int DB_Get_YB(int fsid, char *from, char *to, char *fileName)
+{
+	if(!from || !to || !fileName || fsid<=0)
+		return -1;
+	char from_es[1024], to_es[1024], fileName_es[1024];
+	
+	mysql_real_escape_string(con, from_es, from, strlen(from));
+	mysql_real_escape_string(con, to_es, to, strlen(to));
+	mysql_real_escape_string(con, fileName_es, fileName, strlen(fileName));
+	printf("database:sid:%d; user_from:%s; user_to:%s; fileName:%s;\n", fsid, from_es, to_es, fileName_es);
+	char *prep = "SELECT Y, status, deleted FROM files WHERE sid=%d AND user_from='%s' AND user_to='%s' AND fileName='%s' LIMIT 1";
+	char sql[1024] = {0};
+	snprintf(sql, 1024, prep, fsid, from_es, to_es, fileName_es);
+	if (mysql_query(con, sql))
+	{
+		return -4;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL)
+	{
+		return -4;
+	}
+
+	int num_rows = mysql_num_rows(result);
+	if(num_rows<=0)
+	{
+		mysql_free_result(result);
+		return -1;
+	}
+	
+	MYSQL_ROW row;
+	if(!(row = mysql_fetch_row(result)) )
+	{
+		mysql_free_result(result);
+		return -1;
+	}
+
+	int y = atoi(row[0]);
+	int status = atoi(row[1]);
+	int deleted = atoi(row[2]);
+
+	if(status!=1)
+		return -2;
+	if(deleted==1)
+		return -3;
+
+	return y;
+}
+

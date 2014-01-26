@@ -257,14 +257,13 @@ int HandleFileQuery(SSL *ssl,  cJSON *attr)
 		HandleError(ssl, "File request can not be handled.");
 		return -1;
 	}
-	printf("File requests:\n");
 	File_Request_Print_All();
 	fflush(NULL);
 
 	char *resp = GenerateFileRequestResp(fr->sid, fr->y);
 	SSL_send(ssl, resp, strlen(resp));
 	free(resp);
-	File_Request_Print_All();
+
 	return 0;
 }
 
@@ -398,13 +397,74 @@ int HandleReceivingFile(SSL *ssl, cJSON *attr)
 		printf("File request delete failed!\n");
 		return -1;
 	}
-	printf("File Requests:\n");
+
 	File_Request_Print_All();
 
 	/*Delete file from server end*/
 	remove(filepath);
 
 	return 0;
+}
+
+int HandleOpenFile(SSL *ssl, cJSON *attr)
+{
+	if(!ssl)
+		return -1;
+	int sid, fsid;
+	char *from=NULL, *to=NULL, *filename=NULL;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(strcmp(child->string, "sid")==0)
+		{
+			sid = child->valueint;
+		}else if(0==strcmp(child->string, "fsid"))
+		{
+			fsid = child->valueint;
+		}else if(0==strcmp(child->string, "from"))
+		{
+			from = child->valuestring;
+		}else if(0==strcmp(child->string, "filename"))
+		{
+			filename = child->valuestring;
+		}
+		
+		child = child->next;
+	}
+	
+	SESS_DATA *sess = Session_Find(sid);
+	if(!sess)
+	{
+		HandleError(ssl, "Session not found. Please login first");
+		return -1;
+	}
+
+	to = sess->username;
+	
+	int y = DB_Get_YB(fsid, from, to, filename);
+	
+	if(-1==y)
+	{
+		HandleError(ssl, "Can't find file records");
+		return -1;
+	}else if(-2==y)
+	{
+		HandleError(ssl, "You can not open this file any more!");
+		return -1;
+	}else if(-3==y)
+	{
+		HandleError(ssl, "Your file is supposed to be deleted already.");
+		return -1;
+	}else if(-4==y){
+		HandleError(ssl, "Database error!");
+		return -1;
+	}else if(y>0)
+	{
+		char *resp = GenerateFileOpenResp(y);
+		SSL_send(ssl, resp, strlen(resp));
+		free(resp);
+		return 0;
+	}
 }
 
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
@@ -473,6 +533,9 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}else if(0==strcmp(cmd->valuestring, "receiving_file_next"))
 	{
 		HandleReceivingFile(ssl, attr);
+	}else if(0==strcmp(cmd->valuestring, "open_file"))
+	{
+		HandleOpenFile(ssl, attr);
 	}
 
 	cJSON_Delete(root);

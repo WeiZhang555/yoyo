@@ -124,3 +124,24 @@ char *CreateFileWaitingJSON(int sid)
 	cJSON_Delete(queryJson);
 	return queryStr;
 }
+
+/**
+ *sid: User's session id
+ *fsid: file id
+ *from: file from
+ *fileName: file name
+ */
+char *CreateFileOpenJSON(int sid, int fsid, char *from, char *filename)
+{
+	cJSON *queryJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(queryJson, "cmd", "open_file");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(queryJson, "attr", attr);
+	cJSON_AddNumberToObject(attr, "sid", sid);
+	cJSON_AddNumberToObject(attr, "fsid", fsid);
+	cJSON_AddStringToObject(attr, "from", from);
+	cJSON_AddStringToObject(attr, "filename", filename);
+	char *queryStr = cJSON_Print(queryJson);
+	cJSON_Delete(queryJson);
+	return queryStr;
+}

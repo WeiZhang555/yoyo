@@ -43,5 +43,17 @@ char *GenerateFileSendingResp(int sid, char *from, char *filename, int q, char *
     char *respStr = cJSON_Print(respJson);
     cJSON_Delete(respJson);
 	return respStr;
+}
+
+char *GenerateFileOpenResp(int y)
+{
+	cJSON *respJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(respJson, "cmd", "key_info");
+	cJSON *attr = cJSON_CreateObject();
+    cJSON_AddItemToObject(respJson, "attr", attr);
+    cJSON_AddNumberToObject(attr, "y", y);
+    char *respStr = cJSON_Print(respJson);
+    cJSON_Delete(respJson);
+	return respStr;
 	
 }

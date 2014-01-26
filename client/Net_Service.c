@@ -32,7 +32,7 @@ void Heartbeat(int);
 void StartTimer()
 {
 	struct itimerval value;
-	value.it_value.tv_sec = PULSE_INTERVAL;
+	value.it_value.tv_sec = 1;
 	value.it_value.tv_usec = 0;
 	value.it_interval.tv_sec = PULSE_INTERVAL ;
 	value.it_interval.tv_usec = 0;
@@ -357,13 +357,15 @@ int Query_Period()
 		printf("Nothing new...\n");
 	}else if(0==strcmp(cmd->valuestring, "sending_file_next"))
 	{
+		StopTimer();
 		if(-1==HandleSendingFile(attr))
 		{
 			printf("Handle file sending request error.\n");
 			cJSON_Delete(root);
+			StartTimer();
 			return -1;
 		}
-		
+		StartTimer();
 	}
 	cJSON_Delete(root);
 	return 0;
@@ -444,11 +446,13 @@ int Login()
 		printf("Login successfully!\n");
 		/*Ask server if there is something new happened.
          like a new file waiting to send*/
-		Query_Period();
+		//Query_Period();
 		/*Set the timer to generate heartbeat pulse to the server periodly*/
 		StartTimer();
+		return 0;
+	}else{
+		return -1;
 	}
-	return 0;
 }
 
 /*Step 3: Update the cert status to ok(certificate prepared) and login */
@@ -987,6 +991,128 @@ int SendFile()
 	return 0;
 }
 
+int ParseOpenFileResp(char *buffer, int *y)
+{
+	cJSON *child=NULL, *cmd=NULL, *attr=NULL;
+	cJSON *root = cJSON_Parse(buffer);
+	if(!root)
+		return -1;
+
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(!cmd)	return -1;
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		if(attr->child)
+			printf("Error:%s\n", attr->child->valuestring);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "key_info"))
+	{
+		if(0==strcmp(attr->child->string, "y"))
+			*y = attr->child->valueint;
+	}
+	cJSON_Delete(root);
+	return 0;
+}
+
+int OpenFile()
+{
+	if(0==strlen(name)||0==strlen(passwd) || sid<=0)
+	{
+		printf("Please login first.\n");
+		if(0!=Login())
+			return -1;
+	}
+
+	char from[512]={0}, fileName[512]={0}, filePath[512]={0}, keyPath[512]={0}, buffer[1024]={0}, line[512]={0};
+	int fromLen, fileNameLen;
+	int fsid, q, xa;
+	printf("This file is from: ");
+	fgets(from, 512, stdin);
+	fromLen = strlen(from);
+	if(from[fromLen-1]=='\n')
+		from[--fromLen]='\0';
+	printf("File name: ");
+	fgets(fileName, 512, stdin);
+	fileNameLen = strlen(fileName);
+	if(fileName[fileNameLen-1]=='\n')
+		fileName[--fileNameLen]='\0';
+
+	snprintf(filePath, 512, "receiveFiles/%s/%s", from, fileName);
+	snprintf(keyPath, 512, "%s.key", filePath);
+	printf("Prepare to open File:%s;\n", filePath);
+	
+	FILE *keyf = fopen(keyPath, "r");
+	if(!keyf)
+	{
+		printf("Key file can not open.\n");
+		return -1;
+	}
+
+	bzero(line, 512);
+	fgets(line, 512, keyf);
+	fsid = atoi(line);
+	bzero(line, 512);
+	fgets(line, 512, keyf);
+	q = atoi(line);
+	bzero(line, 512);
+	fgets(line, 512, keyf);
+	xa = atoi(line);
+
+	fclose(keyf);
+	printf("Fsid:%d; q:%d; xa:%d;\n", fsid, q, xa);
+
+	SSL *ssl = ssl_server_data->ssl;
+	char *openReqStr = CreateFileOpenJSON(sid, fsid, from, fileName);
+	SSL_send(ssl, openReqStr, strlen(openReqStr));
+	free(openReqStr);
+
+	if(SSL_recv(ssl, buffer, 1023)<=0)
+	{
+		printf("Server down!\n");
+		StopTimer();
+		Disconnect_Server();
+		return -1;
+	}
+	printf("from server:%s\n", buffer);
+
+	int y;
+	ParseOpenFileResp(buffer, &y);
+	if(y<=0)
+	{
+		printf("Invalid key info from server!\n");
+		return -1;
+	}
+
+	int key = ComputeY(q, y, xa);
+	char keyS[512]={0};
+	snprintf(keyS, 512, "%d", key);
+	printf("key:%s;\n", keyS);
+
+	char *decryptFileName = "temp";
+	DES_Decrypt(filePath, decryptFileName, keyS, strlen(keyS));
+	
+	FILE *df = fopen(decryptFileName, "r");
+	
+	while(!feof(df))
+	{
+		bzero(buffer, 1024);
+		fgets(buffer, 1024, df);
+		printf("%s", buffer);
+	}
+	fclose(df);
+	remove(decryptFileName);
+	return 0;
+}
+
 /*Sanitize the user input, delete all the blank in the front and end*/
 int Sanitize(char input[])
 {
@@ -1028,6 +1154,8 @@ int Sanitize(char input[])
 	
 	return len;
 }
+
+
 
 void Client_Intr(int signum)
 {
@@ -1073,12 +1201,15 @@ int Client_Service_Start(char *ip, int servport)
 			return 0;
 		}else if(0==strcmp("send", cmd)){
 			SendFile();
+		}else if(0==strcmp("open", cmd)){
+			OpenFile();
 		}else{
 			printf("\nCommands usable:\n\n");
 			printf(" -reg: register a new user.\n");
 			printf(" -login: login the user.\n");
 			printf(" -clear: clear the stored user information.\n");
 			printf(" -send: send file to someone\n");
+			printf(" -open: open some file.\n");
 			printf(" -quit: quitting the client.\n\n");
 		}
 	}
