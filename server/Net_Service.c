@@ -467,6 +467,68 @@ int HandleOpenFile(SSL *ssl, cJSON *attr)
 	}
 }
 
+int HandleRevokeFile(SSL *ssl, cJSON *attr)
+{
+	if(!ssl)
+		return -1;
+	int sid;
+	char *from=NULL, *to=NULL, *filename=NULL;
+	cJSON *child = attr->child;
+	while(child)
+	{
+		if(strcmp(child->string, "sid")==0)
+		{
+			sid = child->valueint;
+		}else if(0==strcmp(child->string, "to"))
+		{
+			to = child->valuestring;
+		}else if(0==strcmp(child->string, "filename"))
+		{
+			filename = child->valuestring;
+		}
+		
+		child = child->next;
+	}
+	
+	SESS_DATA *sess = Session_Find(sid);
+	if(!sess)
+	{
+		HandleError(ssl, "Session not found. Please login first");
+		return -1;
+	}
+
+	from = sess->username;
+
+	int status = DB_RevokeFile(from, to, filename);
+	if(status==0)
+	{
+		printf("Revoke ok!\n");
+		char *resp = "{\n\"cmd\":\"success\"\n}";
+		SSL_send(ssl, resp, strlen(resp));
+		return 0;
+	}else if(status==-1)
+	{
+		printf("There is no file result.\n");
+		HandleError(ssl, "File records not found.");
+		return -1;
+	}else if(status==-2)
+	{
+		printf("File has been revoked before\n");
+		HandleError(ssl, "File has been revoked before.");
+		return -1;
+	}else if(status==-3)
+	{
+		printf("File has been deleted before\n");
+		HandleError(ssl, "File has been deleted before.");
+		return -1;
+	}else if(status==-4)
+	{
+		printf("Database error!\n");
+		HandleError(ssl, "Server database error.");
+		return -1;
+	}
+}
+
 void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 {
 	if(!ssl_data)
@@ -536,6 +598,9 @@ void HandleClientMsg(SSL_CLIENT_DATA* ssl_data, int epollfd)
 	}else if(0==strcmp(cmd->valuestring, "open_file"))
 	{
 		HandleOpenFile(ssl, attr);
+	}else if(0==strcmp(cmd->valuestring, "revoke_file"))
+	{
+		HandleRevokeFile(ssl, attr);
 	}
 
 	cJSON_Delete(root);

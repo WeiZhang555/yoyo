@@ -145,3 +145,17 @@ char *CreateFileOpenJSON(int sid, int fsid, char *from, char *filename)
 	cJSON_Delete(queryJson);
 	return queryStr;
 }
+
+char *CreateFileRevokeJSON(int sid, char *to, char *fileName)
+{
+	cJSON *queryJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(queryJson, "cmd", "revoke_file");
+	cJSON *attr = cJSON_CreateObject();
+	cJSON_AddItemToObject(queryJson, "attr", attr);
+	cJSON_AddNumberToObject(attr, "sid", sid);
+	cJSON_AddStringToObject(attr, "to", to);
+	cJSON_AddStringToObject(attr, "filename", fileName);
+	char *queryStr = cJSON_Print(queryJson);
+	cJSON_Delete(queryJson);
+	return queryStr;
+}

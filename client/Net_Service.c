@@ -368,6 +368,7 @@ int Query_Period()
 		StartTimer();
 	}
 	cJSON_Delete(root);
+
 	return 0;
 }
 
@@ -1113,6 +1114,87 @@ int OpenFile()
 	return 0;
 }
 
+int ParseRevokeResponse(char *buffer)
+{
+	if(!buffer)
+		return -1;
+	cJSON *root=NULL, *child=NULL, *cmd=NULL, *attr = NULL;
+	root = cJSON_Parse(buffer);
+	if(!root)
+		return -1;
+	child = root->child;
+	while(child)
+	{
+		if(0==strcmp(child->string, "cmd"))
+			cmd = child;
+		else if(0==strcmp(child->string, "attr"))
+			attr = child;
+		child = child->next;
+	}
+
+	if(!cmd)	return -1;
+	if(0==strcmp(cmd->valuestring, "error"))
+	{
+		if(attr->child)
+			printf("Error:%s\n", attr->child->valuestring);
+		return -1;
+	}else if(0==strcmp(cmd->valuestring, "success"))
+	{
+		printf("Revoke successfully!\n");
+		return 0;
+	}
+	cJSON_Delete(root);
+	return 0;
+
+}
+
+int RevokeFile()
+{
+	if(0==strlen(name)||0==strlen(passwd) || sid<=0)
+	{
+		printf("Please login first.\n");
+		return -1;
+	}
+
+	char to[512]={0}, fileName[512]={0}, buffer[1024]={0}, line[512]={0};
+	int toLen, fileNameLen;
+	
+	printf("Who is the person you send to: ");
+	fgets(to, 512, stdin);
+	toLen = strlen(to);
+	if('\n'==to[toLen-1])
+		to[--toLen] = '\0';
+
+	printf("File name: ");
+	fgets(fileName, 512, stdin);
+	fileNameLen = strlen(fileName);
+	if(fileName[fileNameLen-1]=='\n')
+		fileName[--fileNameLen] = '\0';
+
+	printf("Revoke file [%s] from [%s]. \n", fileName, to);
+	
+	char *queryStr = CreateFileRevokeJSON(sid, to, fileName);
+	if(!ssl_server_data)
+	{
+		printf("Please connect to server first!\n");
+		return -1;
+	}
+
+	SSL *ssl = ssl_server_data->ssl;
+	SSL_send(ssl, queryStr, strlen(queryStr));
+
+	if(0>=SSL_recv(ssl, buffer, 1024))
+	{
+		printf("Server down!\n");
+		StopTimer();
+		Disconnect_Server();
+		return -1;
+	}
+
+	printf("From server:%s\n", buffer);
+	return ParseRevokeResponse(buffer);
+}
+
 /*Sanitize the user input, delete all the blank in the front and end*/
 int Sanitize(char input[])
 {
@@ -1203,13 +1285,16 @@ int Client_Service_Start(char *ip, int servport)
 			SendFile();
 		}else if(0==strcmp("open", cmd)){
 			OpenFile();
+		}else if(0==strcmp("revoke", cmd)){
+			RevokeFile();
 		}else{
 			printf("\nCommands usable:\n\n");
 			printf(" -reg: register a new user.\n");
 			printf(" -login: login the user.\n");
 			printf(" -clear: clear the stored user information.\n");
-			printf(" -send: send file to someone\n");
+			printf(" -send: send file to someone.\n");
 			printf(" -open: open some file.\n");
+			printf(" -revoke: revoke one's sent file.\n");
 			printf(" -quit: quitting the client.\n\n");
 		}
 	}

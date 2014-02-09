@@ -188,8 +188,6 @@ int DB_Login(char *username, char *password)
 	Base64Encode(digest, SHA_DIGEST_LENGTH, &base64Digest);
 	
 	/*check if the generated base64digest meet with the database*/
-	printf("Base64digest:%s\n", base64Digest);
-	printf("Row[0]:%s\n", row[0]);
 	if(0!=strcmp(base64Digest, row[0]))	/*password not meet*/
 	{
 		mysql_free_result(result);
@@ -248,7 +246,6 @@ int DB_Get_YB(int fsid, char *from, char *to, char *fileName)
 	mysql_real_escape_string(con, from_es, from, strlen(from));
 	mysql_real_escape_string(con, to_es, to, strlen(to));
 	mysql_real_escape_string(con, fileName_es, fileName, strlen(fileName));
-	printf("database:sid:%d; user_from:%s; user_to:%s; fileName:%s;\n", fsid, from_es, to_es, fileName_es);
 	char *prep = "SELECT Y, status, deleted FROM files WHERE sid=%d AND user_from='%s' AND user_to='%s' AND fileName='%s' LIMIT 1";
 	char sql[1024] = {0};
 	snprintf(sql, 1024, prep, fsid, from_es, to_es, fileName_es);
@@ -289,3 +286,69 @@ int DB_Get_YB(int fsid, char *from, char *to, char *fileName)
 	return y;
 }
 
+/**
+ *Revoke file:
+ *@from:	whom file is sent from
+ *@to:		whom file is sent to
+ *@fileName: file's name
+ *return: 0--success; 
+ 		  -1--no result; 
+ 		  -2--file has been revoked before.
+		  -3--file has been deleted before.
+		  -4--database error.
+ */
+int DB_RevokeFile(char *from, char *to, char *fileName)
+{
+	if(!from || !to || !fileName)
+	{
+		return -1;
+	}
+
+	char from_es[512], to_es[512], fileName_es[512], sql[1024];
+	mysql_real_escape_string(con, from_es, from, strlen(from));
+	mysql_real_escape_string(con, to_es, to, strlen(to));
+	mysql_real_escape_string(con, fileName_es, fileName, strlen(fileName));
+
+	char *prepSe = "SELECT status, deleted FROM files WHERE user_from='%s' AND user_to='%s' AND fileName='%s' LIMIT 1";
+	snprintf(sql, 1024, prepSe, from_es, to_es, fileName_es);
+	if (mysql_query(con, sql))
+	{
+		return -4;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL)
+	{
+		return -4;
+	}
+
+	int num_rows = mysql_num_rows(result);
+	if(num_rows<=0)
+	{
+		mysql_free_result(result);
+		return -1;
+	}
+
+	MYSQL_ROW row;
+	if(!(row = mysql_fetch_row(result)) )
+	{
+		mysql_free_result(result);
+		return -1;
+	}
+
+	int status = atoi(row[0]);
+	int deleted = atoi(row[1]);
+
+	if(deleted==1)
+		return -3;
+	if(status!=1)
+		return -2;
+
+	char *prepUp = "UPDATE files SET status=0 where user_from='%s' AND user_to='%s' AND fileName='%s' AND status=1";
+	bzero(sql, 1024);
+	snprintf(sql, 1024, prepUp, from_es, to_es, fileName);
+	if(mysql_query(con, sql))
+		return -1;
+	
+	return 0;
+}
