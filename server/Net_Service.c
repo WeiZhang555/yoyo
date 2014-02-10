@@ -442,15 +442,22 @@ int HandleOpenFile(SSL *ssl, cJSON *attr)
 	to = sess->username;
 	
 	int y = DB_Get_YB(fsid, from, to, filename);
-	
-	if(-1==y)
+	char *resp = NULL;
+	if(-1==y)	/*File not exists*/
 	{
-		HandleError(ssl, "Can't find file records");
+		//HandleError(ssl, "Can't find file records");
+		resp = GenerateFileDeleteResp();
+		SSL_send(ssl, resp, strlen(resp));
+		free(resp);
 		return -1;
-	}else if(-2==y)
+	}else if(-2==y)	/*File revoked*/
 	{
-		HandleError(ssl, "You can not open this file any more!");
-		return -1;
+		//HandleError(ssl, "You can not open this file any more!");
+		resp = GenerateFileDeleteResp();
+		SSL_send(ssl, resp, strlen(resp));
+		free(resp);
+		DB_Delete_File_Record(fsid, from, to, filename);
+		return 0;
 	}else if(-3==y)
 	{
 		HandleError(ssl, "Your file is supposed to be deleted already.");
@@ -460,7 +467,7 @@ int HandleOpenFile(SSL *ssl, cJSON *attr)
 		return -1;
 	}else if(y>0)
 	{
-		char *resp = GenerateFileOpenResp(y);
+		resp = GenerateFileOpenResp(y);
 		SSL_send(ssl, resp, strlen(resp));
 		free(resp);
 		return 0;

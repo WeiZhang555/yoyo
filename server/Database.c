@@ -352,3 +352,22 @@ int DB_RevokeFile(char *from, char *to, char *fileName)
 	
 	return 0;
 }
+
+int DB_Delete_File_Record(int fsid, char *from, char *to, char *fileName)
+{
+	if(!from || !to || !fileName || fsid<=0)
+		return -1;
+	char from_es[1024], to_es[1024], fileName_es[1024];
+	
+	mysql_real_escape_string(con, from_es, from, strlen(from));
+	mysql_real_escape_string(con, to_es, to, strlen(to));
+	mysql_real_escape_string(con, fileName_es, fileName, strlen(fileName));
+	char *prep = "DELETE FROM files WHERE sid=%d AND user_from='%s' AND user_to='%s' AND fileName='%s' AND status=0";
+	char sql[1024] = {0};
+	snprintf(sql, 1024, prep, fsid, from_es, to_es, fileName_es);
+	if (mysql_query(con, sql))
+	{
+		return -1;
+	}
+	return 0;
+}

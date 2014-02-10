@@ -57,3 +57,12 @@ char *GenerateFileOpenResp(int y)
 	return respStr;
 	
 }
+
+char *GenerateFileDeleteResp()
+{
+	cJSON *respJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(respJson, "cmd", "delete_file");
+    char *respStr = cJSON_Print(respJson);
+    cJSON_Delete(respJson);
+	return respStr;
+}

@@ -375,7 +375,7 @@ int Query_Period()
 /*The heartbeat pulse*/
 void Heartbeat(int sig)
 {
-	printf("Heartbeat!\n");
+	printf("\nHeartbeat!\n");
 	Query_Period();	
 }
 
@@ -1014,11 +1014,17 @@ int ParseOpenFileResp(char *buffer, int *y)
 	{
 		if(attr->child)
 			printf("Error:%s\n", attr->child->valuestring);
+		cJSON_Delete(root);
 		return -1;
 	}else if(0==strcmp(cmd->valuestring, "key_info"))
 	{
 		if(0==strcmp(attr->child->string, "y"))
 			*y = attr->child->valueint;
+	}else if(0==strcmp(cmd->valuestring, "delete_file"))
+	{
+		printf("This file has been revoked by it's owner!\n");
+		cJSON_Delete(root);
+		return -2;
 	}
 	cJSON_Delete(root);
 	return 0;
@@ -1049,6 +1055,16 @@ int OpenFile()
 
 	snprintf(filePath, 512, "receiveFiles/%s/%s", from, fileName);
 	snprintf(keyPath, 512, "%s.key", filePath);
+	if(0>access(filePath, F_OK))
+	{
+		printf("File not exists!\n");
+		return -1;
+	}
+	if(0>access(keyPath, F_OK))
+	{
+		printf("Key not exists!\n");
+		return -1;
+	}
 	printf("Prepare to open File:%s;\n", filePath);
 	
 	FILE *keyf = fopen(keyPath, "r");
@@ -1086,8 +1102,13 @@ int OpenFile()
 	printf("from server:%s\n", buffer);
 
 	int y;
-	ParseOpenFileResp(buffer, &y);
-	if(y<=0)
+	if(-2==ParseOpenFileResp(buffer, &y))	/*File need to be deleted*/
+	{
+		remove(filePath);
+		remove(keyPath);
+		printf("File [%s] has been deleted from your device.\n\n", filePath);
+		return 0;
+	}else if(y<=0)
 	{
 		printf("Invalid key info from server!\n");
 		return -1;
