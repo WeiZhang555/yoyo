@@ -371,3 +371,53 @@ int DB_Delete_File_Record(int fsid, char *from, char *to, char *fileName)
 	}
 	return 0;
 }
+
+int DB_FileToDelete_ToWhom(char *to, int *sid, char *from, char *fileName)
+{
+	if(!con || !to || !from || !fileName || !sid)
+		return -1;
+
+	char to_es[1024];
+	mysql_real_escape_string(con, to_es, to, strlen(to));
+
+	char *prep = "SELECT sid, user_from, fileName FROM files WHERE status=0 AND deleted=0 AND user_to='%s' LIMIT 1";
+	char sql[1024] = {0};
+	snprintf(sql, 1024, prep, to_es);
+	if (mysql_query(con, sql))
+	{
+		return -1;
+	}
+
+	MYSQL_RES *result = mysql_store_result(con);
+	if (result == NULL)
+	{
+		return -1;
+	}
+
+	int num_rows = mysql_num_rows(result);
+	if(num_rows<=0)
+	{
+		mysql_free_result(result);
+		return 0;
+	}
+
+	MYSQL_ROW row;
+	if(!(row = mysql_fetch_row(result)) )
+	{
+		mysql_free_result(result);
+		return -1;
+	}
+
+	*sid = atoi(row[0]);
+	char *from_db = row[1];
+	char *filename_db = row[2]; 
+
+	if(!from_db)
+		return -1;
+	if(!filename_db)
+		return -1;
+
+	strncpy(from, from_db, 256);
+	strncpy(fileName, filename_db, 256);
+	return 1;
+}	

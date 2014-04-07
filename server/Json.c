@@ -66,3 +66,17 @@ char *GenerateFileDeleteResp()
     cJSON_Delete(respJson);
 	return respStr;
 }
+
+char *GenerateFileDeleteResp2(char *user_from, char *fileName)
+{
+	cJSON *respJson = cJSON_CreateObject();
+	cJSON_AddStringToObject(respJson, "cmd", "delete_file");
+	cJSON *attr = cJSON_CreateObject();
+    cJSON_AddItemToObject(respJson, "attr", attr);
+    cJSON_AddStringToObject(attr, "from", user_from);
+	cJSON_AddStringToObject(attr, "fileName", fileName);
+    char *respStr = cJSON_Print(respJson);
+    cJSON_Delete(respJson);
+	return respStr;
+	
+}

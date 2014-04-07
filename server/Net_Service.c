@@ -188,18 +188,30 @@ int HandleQueryPulse(SSL *ssl, cJSON *attr)
 	char *username = sess->username;
 	
 	FILE_REQUEST *fr = File_Request_To_Whom(username);
-	if(!fr)
+	if(fr)
 	{
-		char *resp = "{\n\"cmd\": \"none\"\n}";
-		SSL_send(ssl, resp, strlen(resp));
-	}else{
 		char *resp = GenerateFileSendingResp(fr->sid, fr->from, fr->fileName, fr->q, fr->xa_en);
 		SSL_send(ssl, resp, strlen(resp));
 		free(resp);
 		/*Next is to waiting for the client's confirm*/
-		
+		return;	
 	}
 
+	//search if there is files need to be delete
+	int fsid = 0;
+	char from[256]={0}, fileName[256]={0};
+	if(DB_FileToDelete_ToWhom(username, &fsid, from, fileName)>0)
+	{
+		char *resp = GenerateFileDeleteResp2(from, fileName);
+		SSL_send(ssl, resp, strlen(resp));
+		free(resp);
+		//delete file record from database
+		DB_Delete_File_Record(fsid, from, username, fileName);
+		return;
+	}
+	
+	char *resp = "{\n\"cmd\": \"none\"\n}";
+	SSL_send(ssl, resp, strlen(resp));
 }
 
 int HandleFileQuery(SSL *ssl,  cJSON *attr)

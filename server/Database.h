@@ -10,3 +10,4 @@ extern int DB_Record_File_Info(FILE_REQUEST *fr);
 extern int DB_Get_YB(int fsid, char *from, char *to, char *fileName);
 extern int DB_RevokeFile(char *from, char *to, char *fileName);
 extern int DB_Delete_File_Record(int fsid, char *from, char *to, char *fileName);
+extern int DB_FileToDelete_ToWhom(char *to, int *sid, char *from, char *fileName);

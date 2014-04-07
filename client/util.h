@@ -6,6 +6,6 @@
 #define CM_IP "127.0.0.1"
 #define CM_PORT 8889
 
-#define PULSE_INTERVAL 60	/*heartbeat time interval*/
+#define PULSE_INTERVAL 30	/*heartbeat time interval*/
 
 #endif

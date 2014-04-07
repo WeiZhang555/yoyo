@@ -306,6 +306,33 @@ int HandleSendingFile(cJSON *attr)
 	return 0;
 }
 
+int HandleFileDelete(cJSON *attr)
+{
+	if(!attr)
+	{
+		printf("attr can not be NULL!\n");
+		return -1;
+	}
+	cJSON *child = attr->child;
+	char *from=NULL, *filename=NULL;
+	while(child)
+	{
+		if(0==strcmp(child->string, "from"))
+			from = child->valuestring;
+		else if(0==strcmp(child->string, "fileName"))
+			filename = child->valuestring;
+		child = child->next;
+	}
+
+	char filePath[512]={0}, keyPath[512]={0};
+	snprintf(filePath, 512, "receiveFiles/%s/%s", from, filename);
+	snprintf(keyPath, 512, "%s.key", filePath);
+	remove(filePath);
+	remove(keyPath);
+	printf("File [%s] has been deleted from device.\n", filePath);
+	return 0;
+}
+
 int Query_Period()
 {
 	char *pulseStr = CreateQueryPulseJSON(sid);
@@ -360,6 +387,17 @@ int Query_Period()
 		StopTimer();
 		if(-1==HandleSendingFile(attr))
 		{
+			printf("Handle file sending request error.\n");
+			cJSON_Delete(root);
+			StartTimer();
+			return -1;
+		}
+		StartTimer();
+	}else if(0==strcmp(cmd->valuestring, "delete_file"))
+	{
+		StopTimer();
+		if(-1==HandleFileDelete(attr))
+		{	
 			printf("Handle file sending request error.\n");
 			cJSON_Delete(root);
 			StartTimer();
